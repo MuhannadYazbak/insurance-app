@@ -7,16 +7,23 @@ import Database from 'better-sqlite3';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Initialize SQLite Database file in the user's local directory or project folder
-//const dbPath = path.join(app.getPath('userData'), 'agency.db');
-//const db = new Database(dbPath);
+// --- Environment & Path Configurations ---
+const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 
-const dbPath = path.join(process.cwd(), 'agency.db'); 
+// If packaged, dist-electron/main.js is running inside resources/app.asar/dist-electron/
+// index.html is sitting right next door in resources/app.asar/dist/
+const DIST_PATH = app.isPackaged 
+  ? path.join(app.getAppPath(), 'dist') 
+  : path.join(__dirname, '../dist');
+
+// --- SQLite Database Safe Initialization ---
+const dbPath = app.isPackaged 
+  ? path.join(app.getPath('userData'), 'agency.db') 
+  : path.join(process.cwd(), 'agency.db');
 
 const db = new Database(dbPath);
 
-// Create the tables if they don't exist yet
-// Create tables with relational integrity
+// Ensure database tables exist with relational constraints
 db.exec(`
   CREATE TABLE IF NOT EXISTS clients (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -28,23 +35,23 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS vehicles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     clientId INTEGER NOT NULL,
-    licensePlate TEXT UNIQUE NOT NULL, -- מספר רכב
-    make TEXT,                         -- יצרן
-    model TEXT,                        -- דגם
-    year TEXT,                         -- שנת ייצור
+    licensePlate TEXT UNIQUE NOT NULL,
+    make TEXT,
+    model TEXT,
+    year TEXT,
     FOREIGN KEY(clientId) REFERENCES clients(id) ON DELETE CASCADE
   );
 
   CREATE TABLE IF NOT EXISTS policies (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     clientId INTEGER NOT NULL,
-    vehicleId INTEGER,                  -- Optional: can link directly to a car
-    policyNumber TEXT UNIQUE NOT NULL,  -- מספר פוליסה
-    company TEXT,                       -- חברת ביטוח (הפניקס, מגדל, וכו')
-    policyType TEXT,                    -- מקיף, חובה, צד ג
+    vehicleId INTEGER,
+    policyNumber TEXT UNIQUE NOT NULL,
+    company TEXT,
+    policyType TEXT,
     startDate TEXT,
     endDate TEXT,
-    premium REAL,                       -- עלות הפרמיה
+    premium REAL,
     FOREIGN KEY(clientId) REFERENCES clients(id) ON DELETE CASCADE,
     FOREIGN KEY(vehicleId) REFERENCES vehicles(id) ON DELETE SET NULL
   );
@@ -61,19 +68,23 @@ function createWindow() {
     },
   });
 
-  if (process.env.VITE_DEV_SERVER_URL) {
-    win.loadURL(process.env.VITE_DEV_SERVER_URL);
+  // Keep DevTools open in production so we can spot any unhandled errors
+  win.webContents.openDevTools();
+
+  if (VITE_DEV_SERVER_URL) {
+    win.loadURL(VITE_DEV_SERVER_URL);
   } else {
-    win.loadFile(path.join(process.env.DIST!, 'index.html'));
+    // Load the file using the clean, unified static build directory path
+    win.loadFile(path.join(DIST_PATH, 'index.html'));
   }
 }
 
-// --- IPC Handlers connected to real SQL queries ---
+// --- IPC Handlers connected to SQLite queries ---
 
 ipcMain.handle('get-clients', async () => {
   try {
     const stmt = db.prepare('SELECT * FROM clients ORDER BY id DESC');
-    return stmt.all(); // Returns an array of rows
+    return stmt.all();
   } catch (err) {
     console.error('Failed to fetch clients:', err);
     return [];
@@ -91,7 +102,6 @@ ipcMain.handle('add-client', async (event, { name, nationalId, phone }) => {
   }
 });
 
-// Fetch all vehicles belonging to a specific client
 ipcMain.handle('get-client-vehicles', async (event, clientId) => {
   try {
     const stmt = db.prepare('SELECT * FROM vehicles WHERE clientId = ?');
@@ -102,7 +112,6 @@ ipcMain.handle('get-client-vehicles', async (event, clientId) => {
   }
 });
 
-// Add a new vehicle
 ipcMain.handle('add-vehicle', async (event, { clientId, licensePlate, make, model, year }) => {
   try {
     const stmt = db.prepare('INSERT INTO vehicles (clientId, licensePlate, make, model, year) VALUES (?, ?, ?, ?, ?)');
@@ -113,7 +122,6 @@ ipcMain.handle('add-vehicle', async (event, { clientId, licensePlate, make, mode
   }
 });
 
-// Fetch all policies for a specific client
 ipcMain.handle('get-client-policies', async (event, clientId) => {
   try {
     const stmt = db.prepare('SELECT * FROM policies WHERE clientId = ?');
@@ -123,7 +131,6 @@ ipcMain.handle('get-client-policies', async (event, clientId) => {
   }
 });
 
-// electron/main.ts
 ipcMain.handle('add-policy', async (event, { clientId, vehicleId, policyNumber, company, policyType, startDate, endDate, premium }) => {
   try {
     const stmt = db.prepare(`
@@ -138,4 +145,16 @@ ipcMain.handle('add-policy', async (event, { clientId, vehicleId, policyNumber, 
   }
 });
 
-app.whenReady().then(createWindow);
+// --- Lifecycle Handlers ---
+
+app.whenReady().then(() => {
+  createWindow();
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});

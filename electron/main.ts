@@ -24,6 +24,7 @@ const dbPath = app.isPackaged
 const db = new Database(dbPath);
 
 // Ensure database tables exist with relational constraints
+// Update this specific block inside electron/main.ts
 db.exec(`
   CREATE TABLE IF NOT EXISTS clients (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -52,6 +53,7 @@ db.exec(`
     startDate TEXT,
     endDate TEXT,
     premium REAL,
+    coverageDetails TEXT, -- ◄--- ADD THIS LINE HERE
     FOREIGN KEY(clientId) REFERENCES clients(id) ON DELETE CASCADE,
     FOREIGN KEY(vehicleId) REFERENCES vehicles(id) ON DELETE SET NULL
   );
@@ -131,13 +133,14 @@ ipcMain.handle('get-client-policies', async (event, clientId) => {
   }
 });
 
-ipcMain.handle('add-policy', async (event, { clientId, vehicleId, policyNumber, company, policyType, startDate, endDate, premium }) => {
+ipcMain.handle('add-policy', async (event, { clientId, vehicleId, policyNumber, company, policyType, startDate, endDate, premium, coverageDetails }) => {
   try {
     const stmt = db.prepare(`
-      INSERT INTO policies (clientId, vehicleId, policyNumber, company, policyType, startDate, endDate, premium) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO policies (clientId, vehicleId, policyNumber, company, policyType, startDate, endDate, premium, coverageDetails) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    stmt.run(clientId, vehicleId, policyNumber, company, policyType, startDate, endDate, premium);
+    // Pass coverageDetails as the last argument matching the SQL placeholder
+    stmt.run(clientId, vehicleId, policyNumber, company, policyType, startDate, endDate, premium, coverageDetails);
     return { success: true };
   } catch (err: any) {
     console.error('Failed to add policy:', err);

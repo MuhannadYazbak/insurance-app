@@ -19,13 +19,14 @@ interface Vehicle {
 interface Policy {
   id: number;
   clientId: number;
-  vehicleId: number | null;
+  vehicleId: number | null; // Nullable for non-car policies
   policyNumber: string;
   company: string;
-  policyType: string;
+  policyType: 'חובה' | 'מקיף' | 'צד ג' | 'בריאות' | 'פנסיה' | 'חיים' | 'דירה'; // Expanded types
   startDate: string;
   endDate: string;
   premium: number;
+  coverageDetails?: string; // ◄--- Added for flexible notes (e.g., "כולל השתתפות עצמית נמוכה", "קופת גמל")
 }
 
 export default function App() {
@@ -43,14 +44,15 @@ export default function App() {
   const [clientForm, setClientForm] = useState({ name: '', nationalId: '', phone: '' });
   const [vehicleForm, setVehicleForm] = useState({ licensePlate: '', make: '', model: '', year: '' });
   const [policyForm, setPolicyForm] = useState({
-    policyNumber: '',
-    company: 'הפניקס',
-    policyType: 'חובה',
-    startDate: '',
-    endDate: '',
-    premium: '',
-    vehicleId: ''
-  });
+  policyNumber: '',
+  company: 'הפניקס',
+  policyType: 'חובה',
+  startDate: '',
+  endDate: '',
+  premium: '',
+  vehicleId: '',
+  coverageDetails: '' // ◄--- Added to hold input for non-car features
+});
 
   // --- טעינת לקוחות ראשונית ---
   const loadClients = async () => {
@@ -105,48 +107,59 @@ export default function App() {
   };
 
   const handleAddPolicy = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedClient || !policyForm.policyNumber || !policyForm.startDate || !policyForm.endDate) {
-      alert('נא למלא את כל שדות החובה לפוליסה (מספר, תאריך התחלה וסיום)');
-      return;
-    }
+  e.preventDefault();
+  if (!selectedClient || !policyForm.policyNumber || !policyForm.startDate || !policyForm.endDate) {
+    alert('נא למלא את כל שדות החובה לפוליסה (מספר, תאריך התחלה וסיום)');
+    return;
+  }
 
-    const payload = {
-      clientId: selectedClient.id,
-      policyNumber: policyForm.policyNumber,
-      company: policyForm.company,
-      policyType: policyForm.policyType,
-      startDate: policyForm.startDate,
-      endDate: policyForm.endDate,
-      premium: parseFloat(policyForm.premium) || 0,
-      vehicleId: policyForm.vehicleId ? parseInt(policyForm.vehicleId) : null
-    };
-
-    // קריאה זמנית למיין פרוסס - אם עוד לא הגדרת את add-policy, נחבר אותו עכשיו
-    const res = await (window as any).electronAPI.addPolicy ? 
-                  await (window as any).electronAPI.addPolicy(payload) : 
-                  { success: true, mock: true };
-
-    if (res.success) {
-      setPolicyForm({
-        policyNumber: '',
-        company: 'הפניקס',
-        policyType: 'חובה',
-        startDate: '',
-        endDate: '',
-        premium: '',
-        vehicleId: ''
-      });
-      fetchRelationalData(selectedClient.id);
-    } else {
-      alert(`שגיאה בהוספת פוליסה: ${res.error}`);
-    }
+  const payload = {
+    clientId: selectedClient.id,
+    policyNumber: policyForm.policyNumber,
+    company: policyForm.company,
+    policyType: policyForm.policyType,
+    startDate: policyForm.startDate,
+    endDate: policyForm.endDate,
+    premium: parseFloat(policyForm.premium) || 0,
+    // Safely link vehicle only if it's a car policy type
+    vehicleId: ['חובה', 'מקיף', 'צד ג'].includes(policyForm.policyType) && policyForm.vehicleId 
+      ? parseInt(policyForm.vehicleId) 
+      : null,
+    coverageDetails: policyForm.coverageDetails // ◄--- Added
   };
+
+  const res = await (window as any).electronAPI.addPolicy 
+                ? await (window as any).electronAPI.addPolicy(payload) 
+                : { success: true, mock: true };
+
+  if (res.success) {
+    setPolicyForm({
+      policyNumber: '',
+      company: 'הפניקס',
+      policyType: 'חובה',
+      startDate: '',
+      endDate: '',
+      premium: '',
+      vehicleId: '',
+      coverageDetails: '' // ◄--- Reset form field
+    });
+    fetchRelationalData(selectedClient.id);
+  } else {
+    alert(`שגיאה בהוספת פוליסה: ${res.error}`);
+  }
+};
 
   // --- לוגיקת סינון לקוחות ---
   const filteredClients = clients.filter(c =>
     c.name.includes(searchTerm) || c.nationalId.includes(searchTerm)
   );
+
+  // Helper function to map vehicleId to licensePlate
+const getLicensePlateById = (vehicleId: number | null) => {
+  if (!vehicleId) return 'ללא שיוך רכב'; // or '-'
+  const matchedVehicle = vehicles.find(v => v.id === vehicleId);
+  return matchedVehicle ? matchedVehicle.licensePlate : 'רכב לא נמצא';
+};
 
   return (
     <div className="min-h-screen bg-gray-100 text-gray-800 p-6 flex flex-col items-center">
@@ -448,20 +461,55 @@ export default function App() {
                         </select>
                       </div>
 
-                      <div className="col-span-2 md:col-span-1">
-                        <label className="block text-[10px] text-gray-400 mb-1">סוג כיסוי</label>
-                        <select 
-                          className="w-full text-xs p-2 border rounded bg-white text-right"
-                          value={policyForm.policyType}
-                          onChange={(e) => setPolicyForm({...policyForm, policyType: e.target.value})}
-                        >
-                          <option value="חובה">ביטוח חובה</option>
-                          <option value="מקיף">ביטוח מקיף</option>
-                          <option value="צד ג">צד שלישי (ג')</option>
-                          <option value="בריאות">ביטוח בריאות</option>
-                          <option value="דירה">ביטוח מבנה/תכולה</option>
-                        </select>
-                      </div>
+                      {/* --- Policy Type Selector --- */}
+<div className="col-span-2 md:col-span-1">
+  <label className="block text-[10px] text-gray-400 mb-1">סוג כיסוי</label>
+  <select 
+    className="w-full text-xs p-2 border rounded bg-white text-right"
+    value={policyForm.policyType}
+    onChange={(e) => setPolicyForm({...policyForm, policyType: e.target.value, vehicleId: ''})}
+  >
+    <optgroup label="רכב">
+      <option value="חובה">ביטוח חובה</option>
+      <option value="מקיף">ביטוח מקיף</option>
+      <option value="צד ג">צד שלישי (ג')</option>
+    </optgroup>
+    <optgroup label="אחר">
+      <option value="בריאות">ביטוח בריאות</option>
+      <option value="פנסיה">קרן פנסיה</option>
+      <option value="חיים">ביטוח חיים</option>
+      <option value="דירה">ביטוח מבנה/תכולה</option>
+    </optgroup>
+  </select>
+</div>
+
+{/* --- Dynamic Vehicle Selector OR Coverage Notes Input --- */}
+{['חובה', 'מקיף', 'צד ג'].includes(policyForm.policyType) ? (
+  <div>
+    <label className="block text-[10px] text-gray-400 mb-1">שיוך לרכב (אופציונלי)</label>
+    <select 
+      className="w-full text-xs p-2 border rounded bg-white text-right"
+      value={policyForm.vehicleId}
+      onChange={(e) => setPolicyForm({...policyForm, vehicleId: e.target.value})}
+    >
+      <option value="">ללא שיוך רכב</option>
+      {vehicles.map(v => (
+        <option key={v.id} value={v.id}>{v.make} {v.model} ({v.licensePlate})</option>
+      ))}
+    </select>
+  </div>
+) : (
+  <div>
+    <label className="block text-[10px] text-gray-400 mb-1">פירוט כיסוי / הערות</label>
+    <input
+      type="text"
+      placeholder="לדוגמה: כולל תרופות מחוץ לסל"
+      className="w-full text-xs p-2 border rounded text-right"
+      value={policyForm.coverageDetails}
+      onChange={(e) => setPolicyForm({ ...policyForm, coverageDetails: e.target.value })}
+    />
+  </div>
+)}
 
                       <button type="submit" className="col-span-2 bg-blue-600 text-white p-2 rounded-lg text-xs font-bold hover:bg-blue-700 h-9">
                         הפק פוליסה במערכת
@@ -473,38 +521,51 @@ export default function App() {
                       <table className="w-full text-right border-collapse">
                         <thead>
                           <tr className="bg-slate-100 border-b text-[11px] font-bold text-slate-600">
-                            <th className="p-3">סטטוס תוקף</th>
-                            <th className="p-3 text-red-600">תאריך סיום</th>
-                            <th className="p-3 text-emerald-700">תאריך התחלה</th>
-                            <th className="p-3">פרמיה</th>
-                            <th className="p-3">סוג כיסוי</th>
-                            <th className="p-3">חברה</th>
-                            <th className="p-3">מספר פוליסה</th>
-                          </tr>
+  <th className="p-3">סטטוס תוקף</th>
+  <th className="p-3 text-red-600">תאריך סיום</th>
+  <th className="p-3 text-emerald-700">תאריך התחלה</th>
+  <th className="p-3">פרמיה</th>
+  <th className="p-3">פירוט / שיוך רכב</th> {/* ◄--- Merged descriptive header */}
+  <th className="p-3">סוג כיסוי</th>
+  <th className="p-3">חברה</th>
+  <th className="p-3">מספר פוליסה</th>
+</tr>
                         </thead>
                         <tbody className="divide-y text-xs">
                           {policies.length === 0 ? (
                             <tr>
-                              <td colSpan={7} className="text-center p-6 text-gray-400">אין פוליסות רשומות בתיק לקוח זה</td>
+                              <td colSpan={8} className="text-center p-6 text-gray-400">אין פוליסות רשומות בתיק לקוח זה</td>
                             </tr>
                           ) : (
                             policies.map(p => {
                               // חישוב פשוט אם הפוליסה פגה או בתוקף
                               const isExpired = new Date(p.endDate) < new Date();
                               return (
-                                <tr key={p.id} className="hover:bg-slate-50/50">
-                                  <td className="p-3">
-                                    <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${isExpired ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                                      {isExpired ? 'פג תוקף' : 'בתוקף'}
-                                    </span>
-                                  </td>
-                                  <td className="p-3 font-mono text-gray-600 font-semibold">{p.endDate}</td>
-                                  <td className="p-3 font-mono text-gray-500">{p.startDate}</td>
-                                  <td className="p-3 font-medium">₪{p.premium.toLocaleString()}</td>
-                                  <td className="p-3">{p.policyType}</td>
-                                  <td className="p-3 font-semibold text-slate-700">{p.company}</td>
-                                  <td className="p-3 font-mono text-blue-600 font-medium">{p.policyNumber}</td>
-                                </tr>
+     <tr key={p.id} className="hover:bg-slate-50/50">
+  <td className="p-3">
+    <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${isExpired ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
+      {isExpired ? 'פג תוקף' : 'בתוקף'}
+    </span>
+  </td>
+  <td className="p-3 font-mono text-gray-600 font-semibold">{p.endDate}</td>
+  <td className="p-3 font-mono text-gray-500">{p.startDate}</td>
+  <td className="p-3 font-medium">₪{p.premium.toLocaleString()}</td>
+  
+  {/* 1. This handles either the license plate or your custom coverage details */}
+  <td className="p-3 text-gray-600 font-medium">
+    {['חובה', 'מקיף', 'צד ג', 'ביטוח חובה', 'ביטוח מקיף', 'צד שלישי (ג\')'].includes(p.policyType) ? (
+      <span className="font-mono text-blue-600 font-semibold">{getLicensePlateById(p.vehicleId)}</span>
+    ) : (
+      <span className="text-gray-500 italic text-xs">{p.coverageDetails || '-'}</span>
+    )}
+  </td>
+
+  {/* 2. This keeps the policy type column displaying correctly */}
+  <td className="p-3">{p.policyType}</td>
+  
+  <td className="p-3 font-semibold text-slate-700">{p.company}</td>
+  <td className="p-3 font-mono text-blue-600 font-medium">{p.policyNumber}</td>
+</tr>
                               );
                             })
                           )}

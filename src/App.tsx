@@ -19,14 +19,15 @@ interface Vehicle {
 interface Policy {
   id: number;
   clientId: number;
-  vehicleId: number | null; // Nullable for non-car policies
+  vehicleId: number | null;
   policyNumber: string;
   company: string;
-  policyType: 'חובה' | 'מקיף' | 'צד ג' | 'בריאות' | 'פנסיה' | 'חיים' | 'דירה'; // Expanded types
+  policyType: string;
   startDate: string;
   endDate: string;
   premium: number;
-  coverageDetails?: string; // ◄--- Added for flexible notes (e.g., "כולל השתתפות עצמית נמוכה", "קופת גמל")
+  coverageDetails?: string;
+  status: 'active' | 'frozen' | 'cancelled'; // ◄--- Add this status type
 }
 
 export default function App() {
@@ -159,6 +160,21 @@ const getLicensePlateById = (vehicleId: number | null) => {
   if (!vehicleId) return 'ללא שיוך רכב'; // or '-'
   const matchedVehicle = vehicles.find(v => v.id === vehicleId);
   return matchedVehicle ? matchedVehicle.licensePlate : 'רכב לא נמצא';
+};
+
+const handleUpdatePolicyStatus = async (policyId: number, currentNumber: string, newStatus: 'active' | 'frozen' | 'cancelled') => {
+  const statusLabels = { active: 'להפעיל מחדש', frozen: 'להקפיא', cancelled: 'לבטל' };
+  
+  if (!window.confirm(`האם אתה בטוח שברצונך ${statusLabels[newStatus]} את פוליסה מספר ${currentNumber}?`)) {
+    return;
+  }
+
+  const res = await (window as any).electronAPI.updatePolicyStatus(policyId, newStatus);
+  if (res.success) {
+    if (selectedClient) fetchRelationalData(selectedClient.id);
+  } else {
+    alert(`שגיאה בעדכון סטטוס הפוליסה: ${res.error}`);
+  }
 };
 
   return (
@@ -386,7 +402,7 @@ const getLicensePlateById = (vehicleId: number | null) => {
                     <form onSubmit={handleAddPolicy} className="bg-slate-50 p-4 rounded-xl border border-slate-200 grid grid-cols-2 md:grid-cols-3 gap-3 items-end text-right">
                       <div className="col-span-2 md:col-span-3 font-bold text-xs text-slate-500">הפקת פוליסה חדשה בתיק:</div>
                       
-                      <div>
+                      {/* <div>
                         <label className="block text-[10px] text-gray-400 mb-1">שיוך לרכב (אופציונלי)</label>
                         <select 
                           className="w-full text-xs p-2 border rounded bg-white text-right"
@@ -398,7 +414,7 @@ const getLicensePlateById = (vehicleId: number | null) => {
                             <option key={v.id} value={v.id}>{v.make} {v.model} ({v.licensePlate})</option>
                           ))}
                         </select>
-                      </div>
+                      </div> */}
 
                       <div>
                         <label className="block text-[10px] text-gray-400 mb-1">פרמיה (עלות בש"ח)</label>
@@ -516,20 +532,21 @@ const getLicensePlateById = (vehicleId: number | null) => {
                       </button>
                     </form>
 
-                    {/* טבלת פוליסות אקטיביות לסוכן */}
+                    
                     <div className="border rounded-xl overflow-hidden shadow-sm">
                       <table className="w-full text-right border-collapse">
                         <thead>
-                          <tr className="bg-slate-100 border-b text-[11px] font-bold text-slate-600">
-  <th className="p-3">סטטוס תוקף</th>
-  <th className="p-3 text-red-600">תאריך סיום</th>
-  <th className="p-3 text-emerald-700">תאריך התחלה</th>
-  <th className="p-3">פרמיה</th>
-  <th className="p-3">פירוט / שיוך רכב</th> {/* ◄--- Merged descriptive header */}
-  <th className="p-3">סוג כיסוי</th>
-  <th className="p-3">חברה</th>
-  <th className="p-3">מספר פוליסה</th>
-</tr>
+                  <tr className="bg-slate-100 border-b text-[11px] font-bold text-slate-600">
+                    <th className="p-3 text-center">פעולות</th>
+                    <th className="p-3">סטטוס תוקף</th>
+                    <th className="p-3 text-red-600">תאריך סיום</th>
+                    <th className="p-3 text-emerald-700">תאריך התחלה</th>
+                    <th className="p-3">פרמיה</th>
+                    <th className="p-3">פירוט / שיוך רכב</th>
+                    <th className="p-3">סוג כיסוי</th>
+                    <th className="p-3">חברה</th>
+                    <th className="p-3">מספר פוליסה</th>
+                  </tr>
                         </thead>
                         <tbody className="divide-y text-xs">
                           {policies.length === 0 ? (
@@ -538,37 +555,88 @@ const getLicensePlateById = (vehicleId: number | null) => {
                             </tr>
                           ) : (
                             policies.map(p => {
-                              // חישוב פשוט אם הפוליסה פגה או בתוקף
-                              const isExpired = new Date(p.endDate) < new Date();
-                              return (
-     <tr key={p.id} className="hover:bg-slate-50/50">
-  <td className="p-3">
-    <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${isExpired ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
-      {isExpired ? 'פג תוקף' : 'בתוקף'}
-    </span>
-  </td>
-  <td className="p-3 font-mono text-gray-600 font-semibold">{p.endDate}</td>
-  <td className="p-3 font-mono text-gray-500">{p.startDate}</td>
-  <td className="p-3 font-medium">₪{p.premium.toLocaleString()}</td>
+  const isExpired = new Date(p.endDate) < new Date();
   
-  {/* 1. This handles either the license plate or your custom coverage details */}
-  <td className="p-3 text-gray-600 font-medium">
-    {['חובה', 'מקיף', 'צד ג', 'ביטוח חובה', 'ביטוח מקיף', 'צד שלישי (ג\')'].includes(p.policyType) ? (
-      <span className="font-mono text-blue-600 font-semibold">{getLicensePlateById(p.vehicleId)}</span>
-    ) : (
-      <span className="text-gray-500 italic text-xs">{p.coverageDetails || '-'}</span>
-    )}
-  </td>
+  // Dynamic badge color and label calculation based on the database status
+  let statusBadgeBg = 'bg-emerald-100 text-emerald-700';
+  let statusLabel = 'בתוקף';
 
-  {/* 2. This keeps the policy type column displaying correctly */}
-  <td className="p-3">{p.policyType}</td>
-  
-  <td className="p-3 font-semibold text-slate-700">{p.company}</td>
-  <td className="p-3 font-mono text-blue-600 font-medium">{p.policyNumber}</td>
-</tr>
-                              );
-                            })
-                          )}
+  if (p.status === 'cancelled') {
+    statusBadgeBg = 'bg-rose-100 text-rose-700 line-through';
+    statusLabel = 'מבוטלת';
+  } else if (p.status === 'frozen') {
+    statusBadgeBg = 'bg-amber-100 text-amber-700';
+    statusLabel = 'מוקפאת';
+  } else if (isExpired) {
+    statusBadgeBg = 'bg-red-100 text-red-700';
+    statusLabel = 'פג תוקף';
+  }
+
+  return (
+    <tr key={p.id} className={`hover:bg-slate-50/50 transition-colors ${p.status === 'cancelled' ? 'opacity-60' : ''}`}>
+      
+      {/* --- Action Buttons Column --- */}
+      <td className="p-3 text-center flex items-center justify-center gap-1.5">
+        {p.status !== 'cancelled' && (
+          <button
+            onClick={() => handleUpdatePolicyStatus(p.id, p.policyNumber, 'cancelled')}
+            className="px-2 py-1 text-[10px] font-medium rounded text-red-600 hover:bg-red-50 border border-red-200 transition"
+            title="ביטול פוליסה"
+          >
+            ביטול
+          </button>
+        )}
+        
+        {p.status === 'frozen' ? (
+          <button
+            onClick={() => handleUpdatePolicyStatus(p.id, p.policyNumber, 'active')}
+            className="px-2 py-1 text-[10px] font-medium rounded text-emerald-600 hover:bg-emerald-50 border border-emerald-200 transition"
+            title="החזרה לתוקף"
+          >
+            הפשרה
+          </button>
+        ) : (
+          p.status !== 'cancelled' && (
+            <button
+              onClick={() => handleUpdatePolicyStatus(p.id, p.policyNumber, 'frozen')}
+              className="px-2 py-1 text-[10px] font-medium rounded text-amber-600 hover:bg-amber-50 border border-amber-200 transition"
+              title="הקפאת פוליסה"
+            >
+              הקפאה
+            </button>
+          )
+        )}
+        
+        {p.status === 'cancelled' && (
+          <span className="text-[10px] text-gray-400 italic">אין פעולות זמינות</span>
+        )}
+      </td>
+
+      {/* --- Dynamic Status Badge --- */}
+      <td className="p-3">
+        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${statusBadgeBg}`}>
+          {statusLabel}
+        </span>
+      </td>
+      
+      <td className="p-3 font-mono text-gray-600 font-semibold">{p.endDate}</td>
+      <td className="p-3 font-mono text-gray-500">{p.startDate}</td>
+      <td className="p-3 font-medium">₪{p.premium.toLocaleString()}</td>
+      
+      <td className="p-3 text-gray-600 font-medium">
+        {['חובה', 'מקיף', 'צד ג', 'ביטוח חובה', 'ביטוח מקיף', 'צד שלישי (ג\')'].includes(p.policyType) ? (
+          <span className="font-mono text-blue-600 font-semibold">{getLicensePlateById(p.vehicleId)}</span>
+        ) : (
+          <span className="text-gray-500 italic text-xs">{p.coverageDetails || '-'}</span>
+        )}
+      </td>
+      <td className="p-3">{p.policyType}</td>
+      <td className="p-3 font-semibold text-slate-700">{p.company}</td>
+      <td className="p-3 font-mono text-blue-600 font-medium">{p.policyNumber}</td>
+    </tr>
+  );
+}))}
+                          
                         </tbody>
                       </table>
                     </div>

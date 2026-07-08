@@ -7,5 +7,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getClientVehicles: (clientId: number) => ipcRenderer.invoke('get-client-vehicles', clientId),
   addVehicle: (vehicle: any) => ipcRenderer.invoke('add-vehicle', vehicle),
   getClientPolicies: (clientId: number) => ipcRenderer.invoke('get-client-policies', clientId),
-  addPolicy: (policy: any) => ipcRenderer.invoke('add-policy', policy), // שורה חדשה
+  addPolicy: (policy: any) => ipcRenderer.invoke('add-policy', policy),
+  // Explicitly type the parameters as number and string/union type
+updatePolicyStatus: (policyId: number, newStatus: 'active' | 'frozen' | 'cancelled') => 
+  ipcRenderer.invoke('update-policy-status', policyId, newStatus),
 });

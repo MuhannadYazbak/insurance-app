@@ -45,6 +45,7 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS policies (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    status TEXT DEFAULT 'active',
     clientId INTEGER NOT NULL,
     vehicleId INTEGER,
     policyNumber TEXT UNIQUE NOT NULL,
@@ -71,7 +72,7 @@ function createWindow() {
   });
 
   // Keep DevTools open in production so we can spot any unhandled errors
-  win.webContents.openDevTools();
+  //win.webContents.openDevTools();
 
   if (VITE_DEV_SERVER_URL) {
     win.loadURL(VITE_DEV_SERVER_URL);
@@ -144,6 +145,17 @@ ipcMain.handle('add-policy', async (event, { clientId, vehicleId, policyNumber, 
     return { success: true };
   } catch (err: any) {
     console.error('Failed to add policy:', err);
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('update-policy-status', async (event, policyId, newStatus) => {
+  try {
+    const stmt = db.prepare('UPDATE policies SET status = ? WHERE id = ?');
+    stmt.run(newStatus, policyId);
+    return { success: true };
+  } catch (err: any) {
+    console.error('Failed to update policy status:', err);
     return { success: false, error: err.message };
   }
 });

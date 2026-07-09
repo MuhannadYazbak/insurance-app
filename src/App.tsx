@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { DashboardView } from './components/DashboardView';
+import { GlobalSearchView } from './components/GlobalSearchView';
 
 interface Client {
   id: number;
@@ -10,10 +12,11 @@ interface Client {
 interface Vehicle {
   id: number;
   clientId: number;
-  licensePlate: string;
   make: string;
   model: string;
-  year: string;
+  year: number;
+  licensePlate: string;
+  status: 'owned' | 'sold' | 'out of order';
 }
 
 interface Policy {
@@ -32,6 +35,7 @@ interface Policy {
 
 export default function App() {
   // --- ניהול סטייט מרכזי ---
+  const [activeView, setActiveView] = useState<'client-manager' | 'dashboard' | 'search'>('client-manager');
   const [clients, setClients] = useState<Client[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
@@ -54,6 +58,7 @@ export default function App() {
   vehicleId: '',
   coverageDetails: '' // ◄--- Added to hold input for non-car features
 });
+  const [editingPolicy, setEditingPolicy] = useState<Policy | null>(null);
 
   // --- טעינת לקוחות ראשונית ---
   const loadClients = async () => {
@@ -177,8 +182,68 @@ const handleUpdatePolicyStatus = async (policyId: number, currentNumber: string,
   }
 };
 
+const handleSavePolicyEdit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (!editingPolicy) return;
+
+  const updates = {
+    vehicleId: editingPolicy.vehicleId ? Number(editingPolicy.vehicleId) : null,
+    premium: Number(editingPolicy.premium),
+    coverageDetails: editingPolicy.coverageDetails || ""
+  };
+
+  const res = await (window as any).electronAPI.updatePolicyDetails(editingPolicy.id, updates);
+  
+  if (res.success) {
+    // Refresh table data
+    if (selectedClient) fetchRelationalData(selectedClient.id);
+    setEditingPolicy(null); // Close the modal
+  } else {
+    alert(`שגיאה בעדכון הפוליסה: ${res.error}`);
+  }
+};
+
+const handleUpdateVehicleStatus = async (vehicleId: number, newStatus: string) => {
+  const res = await (window as any).electronAPI.updateVehicleStatus(vehicleId, newStatus);
+  
+  if (res.success) {
+    // Refresh the client's data so the UI reflects the change everywhere
+    if (selectedClient) fetchRelationalData(selectedClient.id);
+  } else {
+    alert(`שגיאה בעדכון סטטוס הרכב: ${res.error}`);
+  }
+};
+
   return (
-    <div className="min-h-screen bg-gray-100 text-gray-800 p-6 flex flex-col items-center">
+  <div className="min-h-screen bg-slate-100 font-sans text-slate-600">
+    
+    {/* Navigation Quick Tabs Bar (Add this to the very top of your application layout) */}
+    {activeView === 'client-manager' && (
+      <div className="bg-slate-800 text-white p-3 flex justify-between items-center px-6 shadow-md flex-row-reverse">
+        <span className="font-bold tracking-wide text-sm">ניהול סוכנות ביטוח</span>
+        <div className="flex gap-2">
+          <button 
+            onClick={() => setActiveView('search')}
+            className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs font-bold transition"
+          >
+            🔍 חיפוש גלובלי
+          </button>
+          <button 
+            onClick={() => setActiveView('dashboard')}
+            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-bold transition"
+          >
+            📊 לוח בקרה כללי
+          </button>
+        </div>
+      </div>
+    )}
+
+    {/* --- APP ROUTER VIEW SLIDES --- */}
+    
+    {/* Slide 1: Your Current Code Base */}
+    {activeView === 'client-manager' && (
+      <div>
+       <div className="min-h-screen bg-gray-100 text-gray-800 p-6 flex flex-col items-center">
       <header className="w-full max-w-6xl mb-6 text-right">
         <h1 className="text-3xl font-bold text-slate-800">מערכת ניהול סוכנות ביטוח</h1>
       </header>
@@ -380,15 +445,54 @@ const handleUpdatePolicyStatus = async (policyId: number, currentNumber: string,
                               <td colSpan={4} className="text-center p-6 text-gray-400">לא רשומים רכבים עבור לקוח זה</td>
                             </tr>
                           ) : (
-                            vehicles.map(car => (
-                              <tr key={car.id} className="hover:bg-slate-50/50">
-                                <td className="p-3 font-mono">{car.year || '-'}</td>
-                                <td className="p-3">{car.model || '-'}</td>
-                                <td className="p-3">{car.make || '-'}</td>
-                                <td className="p-3 font-semibold text-blue-600 font-mono">{car.licensePlate}</td>
-                              </tr>
-                            ))
-                          )}
+                          vehicles.map((v) => {
+  // Determine text and styling color markers depending on the status
+  let statusColor = "text-emerald-600 bg-emerald-50 border-emerald-200";
+  if (v.status === 'sold') statusColor = "text-gray-500 bg-gray-100 border-gray-200 opacity-60";
+  if (v.status === 'out of order') statusColor = "text-amber-600 bg-amber-50 border-amber-200";
+
+  return (
+    <div 
+      key={v.id} 
+      className={`p-3 border rounded-xl flex items-center justify-between gap-4 transition-all ${
+        v.status === 'sold' ? 'bg-slate-50/50 border-dashed' : 'bg-white shadow-sm'
+      }`}
+      dir="rtl"
+    >
+      {/* Right side: Vehicle Details */}
+      <div className="flex items-center gap-3">
+        <div className="bg-slate-100 p-2 rounded-lg text-slate-600">
+          🚗
+        </div>
+        <div>
+          <h4 className={`text-xs font-bold ${v.status === 'sold' ? 'text-gray-400 line-through' : 'text-slate-700'}`}>
+            {v.make} {v.model} ({v.year})
+          </h4>
+          <span className="font-mono text-[11px] font-semibold text-blue-600 tracking-wider">
+            {v.licensePlate}
+          </span>
+        </div>
+      </div>
+
+      {/* Left side: Interactive Status Inline Dropdown */}
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] font-bold text-slate-400">סטטוס:</label>
+        <select
+          value={v.status || "owned"}
+          onChange={(e) => handleUpdateVehicleStatus(v.id, e.target.value)}
+          className={`text-[11px] font-semibold p-1 px-2 rounded-md border cursor-pointer focus:outline-none transition-colors ${statusColor}`}
+        >
+          <option value="owned" className="text-emerald-700 font-medium bg-white">בבעלות (פעיל)</option>
+          <option value="sold" className="text-gray-600 font-medium bg-white">נמכר</option>
+          <option value="out of order" className="text-amber-700 font-medium bg-white">השבתה / לא בשימוש</option>
+        </select>
+      </div>
+
+    </div>
+  );
+})  )}
+                          
+                          
                         </tbody>
                       </table>
                     </div>
@@ -585,8 +689,14 @@ const handleUpdatePolicyStatus = async (policyId: number, currentNumber: string,
           >
             ביטול
           </button>
+          
         )}
-        
+        <button
+            onClick={() => setEditingPolicy(p)}
+            className="px-2 py-1 text-[10px] font-medium rounded text-blue-600 hover:bg-blue-50 border border-blue-200 transition"
+          >
+           עריכה 
+          </button>
         {p.status === 'frozen' ? (
           <button
             onClick={() => handleUpdatePolicyStatus(p.id, p.policyNumber, 'active')}
@@ -604,6 +714,7 @@ const handleUpdatePolicyStatus = async (policyId: number, currentNumber: string,
             >
               הקפאה
             </button>
+            
           )
         )}
         
@@ -646,9 +757,137 @@ const handleUpdatePolicyStatus = async (policyId: number, currentNumber: string,
               </div>
             </div>
           )}
+          {/* --- POLICY EDIT MODAL OVERLAY --- */}
+{editingPolicy && (
+  <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div className="bg-white rounded-xl shadow-xl max-w-md w-full overflow-hidden text-right" dir="rtl">
+      
+      {/* Modal Header */}
+      <div className="bg-slate-100 p-4 border-b flex justify-between items-center flex-row-reverse">
+        <h3 className="font-bold text-slate-700 text-sm">עדכון פרטי פוליסה: {editingPolicy.policyNumber}</h3>
+        <button 
+          onClick={() => setEditingPolicy(null)}
+          className="text-gray-400 hover:text-gray-600 font-bold text-lg"
+        >
+          ✕
+        </button>
+      </div>
+
+      {/* Modal Form */}
+      <form onSubmit={handleSavePolicyEdit} className="p-4 space-y-4">
+        
+        {/* Conditional Field: Show Car Dropdown only for vehicle policies */}
+        {['חובה', 'מקיף', 'צד ג', 'ביטוח חובה', 'ביטוח מקיף', 'צד שלישי (ג\')'].includes(editingPolicy.policyType) ? (
+          <div>
+            <label className="block text-xs font-bold text-slate-600 mb-1">שיוך לרכב</label>
+            <select 
+  className="w-full text-xs p-2 border rounded bg-white"
+  value={editingPolicy.vehicleId || ""}
+  onChange={(e) => setEditingPolicy({
+    ...editingPolicy, 
+    // Convert string ID to a number, or null if empty
+    vehicleId: e.target.value ? Number(e.target.value) : null 
+  })}
+>
+              <option value="">ללא שיוך רכב</option>
+              {vehicles.map(v => (
+                <option key={v.id} value={v.id}>
+                  {v.make} {v.model} ({v.licensePlate}) {v.status === 'sold' ? '[נמכר]' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          /* Conditional Field: Show Coverage Notes for health/pension/other policies */
+          <div>
+            <label className="block text-xs font-bold text-slate-600 mb-1">פירוט כיסוי / הערות</label>
+            <input
+              type="text"
+              className="w-full text-xs p-2 border rounded"
+              value={editingPolicy.coverageDetails || ""}
+              onChange={(e) => setEditingPolicy({ ...editingPolicy, coverageDetails: e.target.value })}
+            />
+          </div>
+        )}
+
+        {/* Premium Input Field */}
+        <div>
+          <label className="block text-xs font-bold text-slate-600 mb-1">פרמיה (₪)</label>
+          <input
+  type="number"
+  className="w-full text-xs p-2 border rounded font-mono"
+  value={editingPolicy.premium}
+  onChange={(e) => setEditingPolicy({ 
+    ...editingPolicy, 
+    // Convert string input value to a number
+    premium: Number(e.target.value) 
+  })}
+  required
+/>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex gap-2 justify-end pt-2">
+          <button
+            type="button"
+            onClick={() => setEditingPolicy(null)}
+            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-lg transition"
+          >
+            ביטול
+          </button>
+          <button
+            type="submit"
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition"
+          >
+            שמור שינויים
+          </button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+)}
         </div>
 
       </main>
     </div>
-  );
+      </div>
+    )}
+
+    {/* Slide 2: Modular Dashboard Component */}
+{activeView === 'dashboard' && (
+  <DashboardView 
+    onBack={() => setActiveView('client-manager')} 
+    onSelectClient={(clientId) => {
+      // Find the full client object from your current frontend list
+      const targetClient = clients.find(c => c.id === clientId);
+      if (targetClient) {
+        setSelectedClient(targetClient);
+        fetchRelationalData(clientId);
+      }
+      // Flip view back to client panel
+      setActiveView('client-manager');
+    }}
+  />
+)}
+
+    {/* Slide 3: Modular Global Search Component */}
+{activeView === 'search' && (
+  <GlobalSearchView 
+    onBack={() => setActiveView('client-manager')} 
+    onSelectClient={(clientId) => {
+      // 1. Find the full client object from your current frontend list
+      const targetClient = clients.find(c => c.id === clientId);
+      if (targetClient) {
+        setSelectedClient(targetClient);
+        fetchRelationalData(clientId);
+      }
+      // 2. Flip view layout back to client panel
+      setActiveView('client-manager');
+    }} 
+  />
+)}
+
+  </div>
+);
 }

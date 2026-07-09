@@ -9,6 +9,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getClientPolicies: (clientId: number) => ipcRenderer.invoke('get-client-policies', clientId),
   addPolicy: (policy: any) => ipcRenderer.invoke('add-policy', policy),
   // Explicitly type the parameters as number and string/union type
-updatePolicyStatus: (policyId: number, newStatus: 'active' | 'frozen' | 'cancelled') => 
+  updatePolicyStatus: (policyId: number, newStatus: 'active' | 'frozen' | 'cancelled') => 
   ipcRenderer.invoke('update-policy-status', policyId, newStatus),
+  updateVehicleStatus: (vehicleId: number, newStatus: string) => ipcRenderer.invoke('update-vehicle-status', vehicleId, newStatus),
+  updatePolicyDetails: (policyId: number, updates: any) => ipcRenderer.invoke('update-policy-details', policyId, updates),
+  globalSearch: (searchTerm: string) => ipcRenderer.invoke('global-search', searchTerm),
+  getDashboardData: () => ipcRenderer.invoke('get-dashboard-data'),
 });

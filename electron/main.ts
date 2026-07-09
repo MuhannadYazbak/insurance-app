@@ -60,6 +60,17 @@ db.exec(`
   );
 `);
 
+try {
+  const tableInfo = db.prepare("PRAGMA table_info(vehicles)").all();
+  const hasStatus = tableInfo.some((col: any) => col.name === 'status');
+  if (!hasStatus) {
+    db.exec("ALTER TABLE vehicles ADD COLUMN status TEXT DEFAULT 'owned';");
+    console.log("Migrated: Added status column to vehicles.");
+  }
+} catch (err) {
+  console.error("Vehicle migration failed:", err);
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1200,
@@ -156,6 +167,114 @@ ipcMain.handle('update-policy-status', async (event, policyId, newStatus) => {
     return { success: true };
   } catch (err: any) {
     console.error('Failed to update policy status:', err);
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('update-vehicle-status', async (event, vehicleId, newStatus) => {
+  try {
+    db.prepare('UPDATE vehicles SET status = ? WHERE id = ?').run(newStatus, vehicleId);
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('update-policy-details', async (event, policyId, updates) => {
+  const { vehicleId, premium, coverageDetails } = updates;
+  try {
+    db.prepare(`
+      UPDATE policies 
+      SET vehicleId = ?, premium = ?, coverageDetails = ? 
+      WHERE id = ?
+    `).run(vehicleId, premium, coverageDetails, policyId);
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('global-search', async (event, searchTerm) => {
+  try {
+    console.log("🔍 Global search triggered for string:", searchTerm);
+    const formattedSearch = `%${searchTerm}%`;
+    
+    // Grouping strictly by c.id collapses duplicates so every client appears EXACTLY once!
+    const results = db.prepare(`
+      SELECT 
+        c.id as clientId,
+        c.name as clientName,
+        GROUP_CONCAT(DISTINCT p.policyNumber) as allPolicies,
+        GROUP_CONCAT(DISTINCT p.company) as allCompanies,
+        GROUP_CONCAT(DISTINCT v.make || ' ' || v.model) as allVehicles
+      FROM clients c
+      LEFT JOIN policies p ON c.id = p.clientId
+      LEFT JOIN vehicles v ON c.id = v.clientId
+      WHERE 
+        c.name LIKE ? OR 
+        c.nationalId LIKE ? OR 
+        c.phone LIKE ? OR
+        p.policyNumber LIKE ? OR 
+        p.company LIKE ? OR 
+        v.licensePlate LIKE ? OR 
+        v.make LIKE ? OR 
+        v.model LIKE ?
+      GROUP BY c.id -- ◄--- This squashes everything down to one row per person
+      LIMIT 30
+    `).all(
+      formattedSearch, formattedSearch, formattedSearch,
+      formattedSearch, formattedSearch, formattedSearch, 
+      formattedSearch, formattedSearch
+    );
+
+    console.log(`✅ Cleaned duplicates down to ${results.length} unique client rows.`);
+    return { success: true, results };
+  } catch (err: any) {
+    console.error("❌ Search query crashed:", err.message);
+    return { success: false, error: err.message, results: [] };
+  }
+});
+
+ipcMain.handle('get-dashboard-data', async () => {
+  try {
+    // 1. Get policies expiring in the next 30 days, joining with clients for context
+    const expiringPolicies = db.prepare(`
+      SELECT 
+        p.id as policyId,
+        p.policyNumber,
+        p.policyType,
+        p.company,
+        p.endDate,
+        p.premium,
+        c.name as clientName,
+        c.id as clientId
+      FROM policies p
+      JOIN clients c ON p.clientId = c.id
+      WHERE p.status = 'active'
+        AND p.endDate >= DATE('now')
+        AND p.endDate <= DATE('now', '+30 days')
+      ORDER BY p.endDate ASC
+    `).all();
+
+    // 2. Calculate simple business stats for his dashboard
+const stats = db.prepare(`
+  SELECT 
+    COUNT(id) as activeCount,
+    SUM(premium) as totalPremium
+  FROM policies 
+  WHERE status = 'active'
+`).get() as any; // ◄--- ADD "as any" RIGHT HERE
+
+    return { 
+      success: true, 
+      expiringPolicies, 
+      stats: {
+        activeCount: stats.activeCount || 0,
+        totalPremium: stats.totalPremium || 0
+      }
+    };
+  } catch (err: any) {
+    console.error("❌ Dashboard query failed:", err.message);
     return { success: false, error: err.message };
   }
 });

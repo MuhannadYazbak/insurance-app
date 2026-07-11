@@ -58,6 +58,14 @@ db.exec(`
     FOREIGN KEY(clientId) REFERENCES clients(id) ON DELETE CASCADE,
     FOREIGN KEY(vehicleId) REFERENCES vehicles(id) ON DELETE SET NULL
   );
+  CREATE TABLE IF NOT EXISTS notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    clientId INTEGER NOT NULL,
+    text TEXT NOT NULL,
+    status TEXT CHECK(status IN ('todo', 'done', 'try-again')) DEFAULT 'todo',
+    createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(clientId) REFERENCES clients(id) ON DELETE CASCADE
+  );
 `);
 
 try {
@@ -275,6 +283,59 @@ const stats = db.prepare(`
     };
   } catch (err: any) {
     console.error("❌ Dashboard query failed:", err.message);
+    return { success: false, error: err.message };
+  }
+});
+
+// Fetch all notes for a specific client
+ipcMain.handle('get-client-notes', async (event, clientId) => {
+  try {
+    const notes = db.prepare(`
+      SELECT * FROM notes 
+      WHERE clientId = ? 
+      ORDER BY datetime(createdAt) DESC
+    `).all(clientId);
+    return { success: true, notes };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+});
+
+// Add a new note
+ipcMain.handle('add-client-note', async (event, payload) => {
+  try {
+    const { clientId, text, status } = payload;
+    db.prepare(`
+      INSERT INTO notes (clientId, text, status, createdAt) 
+      VALUES (?, ?, ?, datetime('now', 'localtime'))
+    `).run(clientId, text, status);
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+});
+
+// Update an existing note's status (Bonus: let the agent toggle it directly from the UI!)
+ipcMain.handle('update-note-status', async (event, { noteId, status }) => {
+  try {
+    db.prepare(`UPDATE notes SET status = ? WHERE id = ?`).run(status, noteId);
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+});
+
+// Add to electron/main.ts
+ipcMain.handle('get-all-notes', async () => {
+  try {
+    const notes = db.prepare(`
+      SELECT n.*, c.name as clientName 
+      FROM notes n
+      JOIN clients c ON n.clientId = c.id
+      ORDER BY datetime(n.createdAt) DESC
+    `).all();
+    return { success: true, notes };
+  } catch (err: any) {
     return { success: false, error: err.message };
   }
 });

@@ -15,4 +15,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updatePolicyDetails: (policyId: number, updates: any) => ipcRenderer.invoke('update-policy-details', policyId, updates),
   globalSearch: (searchTerm: string) => ipcRenderer.invoke('global-search', searchTerm),
   getDashboardData: () => ipcRenderer.invoke('get-dashboard-data'),
+  getClientNotes: (clientId: number) => ipcRenderer.invoke('get-client-notes', clientId),
+addClientNote: (payload: { clientId: number, text: string, status: string }) => ipcRenderer.invoke('add-client-note', payload),
+updateNoteStatus: (noteId: number, status: string) => ipcRenderer.invoke('update-note-status', { noteId, status }),
+getAllNotes: () => ipcRenderer.invoke('get-all-notes'),
 });

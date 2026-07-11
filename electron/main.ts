@@ -1,6 +1,8 @@
 // electron/main.ts
-import { app, BrowserWindow, ipcMain } from 'electron';
-import path from 'node:path';
+import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import * as fs from 'fs';
+import * as path from 'path';
+//import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
 
@@ -75,6 +77,14 @@ db.exec(`
     description TEXT NOT NULL,
     estimatedPayout REAL DEFAULT 0,
     status TEXT CHECK(status IN ('open', 'under-review', 'settled', 'rejected')) DEFAULT 'open',
+    createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(clientId) REFERENCES clients(id) ON DELETE CASCADE
+  );
+  CREATE TABLE IF NOT EXISTS documents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    clientId INTEGER NOT NULL,
+    fileName TEXT NOT NULL,
+    filePath TEXT NOT NULL,
     createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(clientId) REFERENCES clients(id) ON DELETE CASCADE
   );
@@ -386,6 +396,79 @@ ipcMain.handle('add-client-claim', async (event, payload) => {
 ipcMain.handle('update-claim-status', async (event, { claimId, status }) => {
   try {
     db.prepare(`UPDATE claims SET status = ? WHERE id = ?`).run(status, claimId);
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+});
+
+// 1. Fetch all document metadata records for a client
+ipcMain.handle('get-client-documents', async (event, clientId) => {
+  try {
+    const docs = db.prepare(`
+      SELECT * FROM documents 
+      WHERE clientId = ? 
+      ORDER BY datetime(createdAt) DESC
+    `).all(clientId);
+    return { success: true, documents: docs };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+});
+
+// 2. Safely copy a local file to the app's internal sandboxed directory
+ipcMain.handle('upload-client-document', async (event, { clientId, sourcePath, originalName }) => {
+  try {
+    // Establish standard isolated storage path: AppData/Roaming/insurance-app/client_documents/client_X/
+    const baseDocsDir = path.join(app.getPath('userData'), 'client_documents', `client_${clientId}`);
+
+    // Ensure target structural directory nested branches exist safely
+    if (!fs.existsSync(baseDocsDir)) {
+      fs.mkdirSync(baseDocsDir, { recursive: true });
+    }
+
+    // Sanitize duplicate file naming conflicts by pre-fixing timestamp tags
+    const uniqueFileName = `${Date.now()}_${originalName}`;
+    const destinationPath = path.join(baseDocsDir, uniqueFileName);
+
+    // Execute local filesystem copy block
+    fs.copyFileSync(sourcePath, destinationPath);
+
+    // Save reference pointer path map into database
+    db.prepare(`
+      INSERT INTO documents (clientId, fileName, filePath)
+      VALUES (?, ?, ?)
+    `).run(clientId, originalName, destinationPath);
+
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+});
+
+// 3. Launch the file in the operating system's native default software viewer
+ipcMain.handle('open-native-document', async (event, filePath) => {
+  try {
+    if (!fs.existsSync(filePath)) {
+      throw new Error('הקובץ המבוקש לא נמצא בנתיב המקומי או שהוסר.');
+    }
+    await shell.openPath(filePath);
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+});
+// 4. Safely delete the physical file from disk and remove its database record
+ipcMain.handle('delete-client-document', async (event, { documentId, filePath }) => {
+  try {
+    // Remove the physical file from disk if it exists
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+
+    // Delete the metadata pointer row from the SQLite database
+    db.prepare('DELETE FROM documents WHERE id = ?').run(documentId);
+
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message };

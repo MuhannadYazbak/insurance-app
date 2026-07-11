@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { NotesView } from './NotesView';
 import { ClaimsView } from './ClaimsView';
+import { DocumentsView } from './DocumentsView';
 
 interface Client {
   id: number;
@@ -47,7 +48,7 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
   setSelectedClient,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'info' | 'vehicles' | 'policies' | 'notes' | 'claims'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'vehicles' | 'policies' | 'notes' | 'claims' | 'documents'>('info');
 
   // Relational client lists
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -285,64 +286,63 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
                 <h2 className="text-2xl font-bold text-slate-800 text-right">{selectedClient.name}</h2>
               </div>
 
-              <div className="flex border-b mb-6 justify-end gap-1 flex-wrap md:flex-nowrap">
+              <div className="flex border-b mb-6 justify-end gap-1 flex-nowrap">
   
-  
-
-  
-
-  
-  
-  
-  {/* טאב 5: הערות ותזכורות */}
   <button
     onClick={() => setActiveTab('notes')}
-    className={`px-4 py-2 text-sm font-medium border-b-2 transition shrink-0 ${
+    className={`px-3 py-2 text-xs md:text-sm font-bold border-b-2 transition shrink-0 ${
       activeTab === 'notes' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
     }`}
   >
-    הערות ותזכורות 📝
+    תזכורות 📝
   </button>
-  {/* טאב 4: תביעות לקוח */}
+
   <button
     onClick={() => setActiveTab('claims')}
-    className={`px-4 py-2 text-sm font-medium border-b-2 transition shrink-0 ${
+    className={`px-3 py-2 text-xs md:text-sm font-bold border-b-2 transition shrink-0 ${
       activeTab === 'claims' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
     }`}
   >
-    תביעות לקוח 🚨
+    תביעות 🚨
   </button>
-  {/* טאב 3: פוליסות ביטוח */}
+
   <button
     onClick={() => setActiveTab('policies')}
-    className={`px-4 py-2 text-sm font-medium border-b-2 transition shrink-0 ${
+    className={`px-3 py-2 text-xs md:text-sm font-bold border-b-2 transition shrink-0 ${
       activeTab === 'policies' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
     }`}
   >
-    פוליסות ביטוח
+    פוליסות 📜
   </button>
-  {/* טאב 2: רכבים מבוטחים */}
+  
   <button
     onClick={() => setActiveTab('vehicles')}
-    className={`px-4 py-2 text-sm font-medium border-b-2 transition shrink-0 ${
+    className={`px-3 py-2 text-xs md:text-sm font-bold border-b-2 transition shrink-0 ${
       activeTab === 'vehicles' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
     }`}
   >
-    רכבים מבוטחים
+    רכבים 🚗
+  </button>
+
+  <button
+    onClick={() => setActiveTab('documents')}
+    className={`px-3 py-2 text-xs md:text-sm font-bold border-b-2 transition shrink-0 ${
+      activeTab === 'documents' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+    }`}
+  >
+    מסמכים 📁
   </button>
   
-  {/* טאב 1: כרטיס לקוח */}
   <button
     onClick={() => setActiveTab('info')}
-    className={`px-4 py-2 text-sm font-medium border-b-2 transition shrink-0 ${
+    className={`px-3 py-2 text-xs md:text-sm font-bold border-b-2 transition shrink-0 ${
       activeTab === 'info' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
     }`}
   >
-    כרטיס לקוח
+    כרטיס לקוח 👤
   </button>
 
 </div>
-
               <div className="flex-1 text-right">
                 {activeTab === 'info' && (
                   <div className="space-y-4">
@@ -361,6 +361,9 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
                       </div>
                     </div>
                   </div>
+                )}
+                {activeTab === 'documents' && (
+                <DocumentsView clientId={selectedClient.id} />
                 )}
 
                 {/* ◄--- RENDER THE COMPONENT WHEN TAB IS ACTIVE --- */}

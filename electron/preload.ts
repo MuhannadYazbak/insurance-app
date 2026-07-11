@@ -22,4 +22,8 @@ getAllNotes: () => ipcRenderer.invoke('get-all-notes'),
 getClientClaims: (clientId: number) => ipcRenderer.invoke('get-client-claims', clientId),
 addClientClaim: (payload: any) => ipcRenderer.invoke('add-client-claim', payload),
 updateClaimStatus: (claimId: number, status: string) => ipcRenderer.invoke('update-claim-status', { claimId, status }),
+getClientDocuments: (clientId: number) => ipcRenderer.invoke('get-client-documents', clientId),
+uploadClientDocument: (payload: { clientId: number; sourcePath: string; originalName: string }) => ipcRenderer.invoke('upload-client-document', payload),
+openNativeDocument: (filePath: string) => ipcRenderer.invoke('open-native-document', filePath),
+deleteClientDocument: (payload: { documentId: number; filePath: string }) => ipcRenderer.invoke('delete-client-document', payload),
 });

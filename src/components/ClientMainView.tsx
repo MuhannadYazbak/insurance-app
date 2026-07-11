@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NotesView } from './NotesView';
+import { ClaimsView } from './ClaimsView';
 
 interface Client {
   id: number;
@@ -46,7 +47,7 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
   setSelectedClient,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'info' | 'vehicles' | 'policies' | 'notes'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'vehicles' | 'policies' | 'notes' | 'claims'>('info');
 
   // Relational client lists
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -284,43 +285,62 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
                 <h2 className="text-2xl font-bold text-slate-800 text-right">{selectedClient.name}</h2>
               </div>
 
-              <div className="flex border-b mb-6 justify-end gap-1">
-  {/* ◄--- STEP 3: ADD THE NEW NOTES BUTTON HERE --- */}
+              <div className="flex border-b mb-6 justify-end gap-1 flex-wrap md:flex-nowrap">
+  
+  
+
+  
+
+  
+  
+  
+  {/* טאב 5: הערות ותזכורות */}
   <button
     onClick={() => setActiveTab('notes')}
-    className={`px-4 py-2 text-sm font-medium border-b-2 transition ${
+    className={`px-4 py-2 text-sm font-medium border-b-2 transition shrink-0 ${
       activeTab === 'notes' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
     }`}
   >
     הערות ותזכורות 📝
   </button>
-
+  {/* טאב 4: תביעות לקוח */}
+  <button
+    onClick={() => setActiveTab('claims')}
+    className={`px-4 py-2 text-sm font-medium border-b-2 transition shrink-0 ${
+      activeTab === 'claims' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+    }`}
+  >
+    תביעות לקוח 🚨
+  </button>
+  {/* טאב 3: פוליסות ביטוח */}
   <button
     onClick={() => setActiveTab('policies')}
-    className={`px-4 py-2 text-sm font-medium border-b-2 transition ${
+    className={`px-4 py-2 text-sm font-medium border-b-2 transition shrink-0 ${
       activeTab === 'policies' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
     }`}
   >
     פוליסות ביטוח
   </button>
-  
+  {/* טאב 2: רכבים מבוטחים */}
   <button
     onClick={() => setActiveTab('vehicles')}
-    className={`px-4 py-2 text-sm font-medium border-b-2 transition ${
+    className={`px-4 py-2 text-sm font-medium border-b-2 transition shrink-0 ${
       activeTab === 'vehicles' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
     }`}
   >
     רכבים מבוטחים
   </button>
   
+  {/* טאב 1: כרטיס לקוח */}
   <button
     onClick={() => setActiveTab('info')}
-    className={`px-4 py-2 text-sm font-medium border-b-2 transition ${
+    className={`px-4 py-2 text-sm font-medium border-b-2 transition shrink-0 ${
       activeTab === 'info' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
     }`}
   >
     כרטיס לקוח
   </button>
+
 </div>
 
               <div className="flex-1 text-right">
@@ -344,9 +364,12 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
                 )}
 
                 {/* ◄--- RENDER THE COMPONENT WHEN TAB IS ACTIVE --- */}
-  {activeTab === 'notes' && (
-    <NotesView clientId={selectedClient.id} />
-  )}
+                {activeTab === 'claims' && (
+                <ClaimsView clientId={selectedClient.id} vehicles={vehicles} />
+                )}
+                {activeTab === 'notes' && (
+                    <NotesView clientId={selectedClient.id} />
+                )}
                 {activeTab === 'vehicles' && (
                   <div className="flex flex-col gap-6">
                     <form onSubmit={handleAddVehicle} className="bg-gray-50 p-4 rounded-xl border grid grid-cols-2 sm:grid-cols-4 gap-2 items-end">

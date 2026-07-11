@@ -66,6 +66,18 @@ db.exec(`
     createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(clientId) REFERENCES clients(id) ON DELETE CASCADE
   );
+  CREATE TABLE IF NOT EXISTS claims (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    clientId INTEGER NOT NULL,
+    vehicleId INTEGER,
+    policyNumber TEXT,
+    incidentDate TEXT NOT NULL,
+    description TEXT NOT NULL,
+    estimatedPayout REAL DEFAULT 0,
+    status TEXT CHECK(status IN ('open', 'under-review', 'settled', 'rejected')) DEFAULT 'open',
+    createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(clientId) REFERENCES clients(id) ON DELETE CASCADE
+  );
 `);
 
 try {
@@ -335,6 +347,46 @@ ipcMain.handle('get-all-notes', async () => {
       ORDER BY datetime(n.createdAt) DESC
     `).all();
     return { success: true, notes };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+});
+
+// Fetch all claims for a single client
+ipcMain.handle('get-client-claims', async (event, clientId) => {
+  try {
+    const claims = db.prepare(`
+      SELECT c.*, v.licensePlate, v.make, v.model 
+      FROM claims c
+      LEFT JOIN vehicles v ON c.vehicleId = v.id
+      WHERE c.clientId = ?
+      ORDER BY datetime(c.createdAt) DESC
+    `).all(clientId);
+    return { success: true, claims };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+});
+
+// Create a new claim entry
+ipcMain.handle('add-client-claim', async (event, payload) => {
+  try {
+    const { clientId, vehicleId, policyNumber, incidentDate, description, estimatedPayout } = payload;
+    db.prepare(`
+      INSERT INTO claims (clientId, vehicleId, policyNumber, incidentDate, description, estimatedPayout, status)
+      VALUES (?, ?, ?, ?, ?, ?, 'open')
+    `).run(clientId, vehicleId || null, policyNumber || null, incidentDate, description, estimatedPayout || 0);
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+});
+
+// Update a claim's status as negotiations/reviews progress
+ipcMain.handle('update-claim-status', async (event, { claimId, status }) => {
+  try {
+    db.prepare(`UPDATE claims SET status = ? WHERE id = ?`).run(status, claimId);
+    return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message };
   }

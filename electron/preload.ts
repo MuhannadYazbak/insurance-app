@@ -19,4 +19,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 addClientNote: (payload: { clientId: number, text: string, status: string }) => ipcRenderer.invoke('add-client-note', payload),
 updateNoteStatus: (noteId: number, status: string) => ipcRenderer.invoke('update-note-status', { noteId, status }),
 getAllNotes: () => ipcRenderer.invoke('get-all-notes'),
+getClientClaims: (clientId: number) => ipcRenderer.invoke('get-client-claims', clientId),
+addClientClaim: (payload: any) => ipcRenderer.invoke('add-client-claim', payload),
+updateClaimStatus: (claimId: number, status: string) => ipcRenderer.invoke('update-claim-status', { claimId, status }),
 });

@@ -5,6 +5,7 @@ import * as path from 'path';
 //import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
+import { BackupService } from './backupService';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -89,6 +90,8 @@ db.exec(`
     FOREIGN KEY(clientId) REFERENCES clients(id) ON DELETE CASCADE
   );
 `);
+
+const backupService = new BackupService(app.getPath('userData'));
 
 try {
   const tableInfo = db.prepare("PRAGMA table_info(vehicles)").all();
@@ -475,9 +478,24 @@ ipcMain.handle('delete-client-document', async (event, { documentId, filePath })
   }
 });
 
+ipcMain.handle('authenticate-gdrive-code', async (event, code) => {
+  try {
+    await backupService.authenticateWithCode(code);
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('run-gdrive-backup', async () => {
+  return await backupService.runBackupPipeline();
+});
+
 // --- Lifecycle Handlers ---
 
 app.whenReady().then(() => {
+  const hasCredentials = backupService.loadSavedCredentials();
+  console.log(`[Backup] Auto-login status: ${hasCredentials}`);
   createWindow();
 
   app.on('activate', () => {

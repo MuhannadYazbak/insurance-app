@@ -10,13 +10,16 @@
     "postinstall": "electron-rebuild"
   },
   "dependencies": {
+    "archiver": "^8.0.0",
     "better-sqlite3": "^12.11.1",
+    "googleapis": "^173.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.1.0",
     "@tailwindcss/postcss": "^4.3.2",
+    "@types/archiver": "^8.0.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.13.0",
     "@types/react": "^19.0.0",

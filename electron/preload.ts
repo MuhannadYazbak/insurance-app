@@ -26,4 +26,7 @@ getClientDocuments: (clientId: number) => ipcRenderer.invoke('get-client-documen
 uploadClientDocument: (payload: { clientId: number; sourcePath: string; originalName: string }) => ipcRenderer.invoke('upload-client-document', payload),
 openNativeDocument: (filePath: string) => ipcRenderer.invoke('open-native-document', filePath),
 deleteClientDocument: (payload: { documentId: number; filePath: string }) => ipcRenderer.invoke('delete-client-document', payload),
+getGDriveAuthUrl: () => ipcRenderer.invoke('get-gdrive-auth-url'),
+authenticateGDriveCode: (code: string) => ipcRenderer.invoke('authenticate-gdrive-code', code),
+runGDriveBackup: () => ipcRenderer.invoke('run-gdrive-backup'),
 });

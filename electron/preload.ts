@@ -29,4 +29,7 @@ deleteClientDocument: (payload: { documentId: number; filePath: string }) => ipc
 getGDriveAuthUrl: () => ipcRenderer.invoke('get-gdrive-auth-url'),
 authenticateGDriveCode: (code: string) => ipcRenderer.invoke('authenticate-gdrive-code', code),
 runGDriveBackup: () => ipcRenderer.invoke('run-gdrive-backup'),
+updateClientPhone: (clientId: number, phone: string) => ipcRenderer.invoke('update-client-phone', { clientId, phone }),
+updateVehiclePlate: (vehicleId: number, licensePlate: string) => ipcRenderer.invoke('update-vehicle-plate', { vehicleId, licensePlate }),
+updateClientInfo: (clientId: number, data: { name: string; phone: string; email: string; address: string }) => ipcRenderer.invoke('update-client-info', { clientId, ...data }),
 });

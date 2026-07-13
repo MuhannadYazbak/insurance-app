@@ -8,6 +8,8 @@ interface Client {
   name: string;
   nationalId: string;
   phone: string;
+  email: string;
+  address: string;
 }
 
 interface Vehicle {
@@ -55,7 +57,7 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
   const [policies, setPolicies] = useState<Policy[]>([]);
 
   // Form states
-  const [clientForm, setClientForm] = useState({ name: '', nationalId: '', phone: '' });
+  const [clientForm, setClientForm] = useState({ name: '', nationalId: '', phone: '', email: '', address: '' });
   const [vehicleForm, setVehicleForm] = useState({ licensePlate: '', make: '', model: '', year: '' });
   const [policyForm, setPolicyForm] = useState({
     policyNumber: '',
@@ -68,6 +70,38 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
     coverageDetails: '',
   });
   const [editingPolicy, setEditingPolicy] = useState<Policy | null>(null);
+  const [isEditingPhone, setIsEditingPhone] = useState(false);
+  const [phoneInput, setPhoneInput] = useState(selectedClient?.phone || '');
+  const [editingVehicleId, setEditingVehicleId] = useState<number | null>(null);
+  const [plateInput, setPlateInput] = useState('');
+  const [isEditingClient, setIsEditingClient] = useState(false);
+  const [editClientForm, setEditClientForm] = useState({
+    name: '',
+    phone: '',
+    email: '',
+    address: ''
+  });
+
+  // Sync form state when selectedClient changes or edit mode opens
+  useEffect(() => {
+    if (selectedClient) {
+      setEditClientForm({
+        name: selectedClient.name || '',
+        phone: selectedClient.phone || '',
+        email: selectedClient.email || '',
+        address: selectedClient.address || ''
+      });
+    }
+    setIsEditingClient(false);
+  }, [selectedClient]);
+
+  // Reset edit state when user switches clients
+  useEffect(() => {
+    setPhoneInput(selectedClient?.phone || '');
+    setIsEditingPhone(false);
+  }, [selectedClient]);
+
+
 
   const fetchRelationalData = async (clientId: number) => {
     const clientCars = await (window as any).electronAPI.getClientVehicles(clientId);
@@ -88,10 +122,53 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
 
     const res = await (window as any).electronAPI.addClient(clientForm);
     if (res.success) {
-      setClientForm({ name: '', nationalId: '', phone: '' });
+      // Update the reset to include all fields:
+      setClientForm({ name: '', nationalId: '', phone: '', email: '', address: '' });
       await loadClients();
     } else {
       alert(`שגיאה בהוספת לקוח: ${res.error || 'תעודת זהות כבר קיימת'}`);
+    }
+  };
+
+  const handleSaveClientInfo = async () => {
+    if (!selectedClient || !editClientForm.name.trim()) return;
+
+    try {
+      const res = await (window as any).electronAPI.updateClientInfo(selectedClient.id, editClientForm);
+
+      if (res.success) {
+        // Direct mutation of the local object to match your state pattern instantly
+        selectedClient.name = editClientForm.name;
+        selectedClient.phone = editClientForm.phone;
+        selectedClient.email = editClientForm.email;
+        selectedClient.address = editClientForm.address;
+
+        setIsEditingClient(false);
+      } else {
+        alert(`שגיאה בעדכון פרטי הלקוח: ${res.error}`);
+      }
+    } catch (error) {
+      console.error('IPC Error updating client info:', error);
+      alert('שגיאה בתקשורת עם בסיס הנתונים');
+    }
+  };
+
+  const handleSavePhone = async () => {
+    if (!selectedClient) return;
+
+    try {
+      const response = await (window as any).electronAPI.updateClientPhone(selectedClient.id, phoneInput);
+
+      if (response.success) {
+        // Update local state copy so UI refreshes immediately
+        selectedClient.phone = phoneInput;
+        setIsEditingPhone(false);
+      } else {
+        alert('שגיאה בעדכון מספר הטלפון: ' + response.error);
+      }
+    } catch (error) {
+      console.error('IPC Error updating phone:', error);
+      alert('שגיאה בתקשורת עם בסיס הנתונים');
     }
   };
 
@@ -106,6 +183,28 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
       fetchRelationalData(selectedClient.id);
     } else {
       alert(`שגיאה בהוספת רכב: ${res.error}`);
+    }
+  };
+
+  const handleSavePlate = async (vehicleId: number) => {
+    if (!plateInput.trim()) return;
+
+    try {
+      const res = await (window as any).electronAPI.updateVehiclePlate(vehicleId, plateInput.trim());
+      if (res.success) {
+        // Update local state directly so UI reflects change instantly without re-fetching
+        const updatedVehicles = vehicles.map(v =>
+          v.id === vehicleId ? { ...v, licensePlate: plateInput.trim() } : v
+        );
+        // Assuming you have a setVehicles hook updating the main state array
+        setVehicles(updatedVehicles);
+        setEditingVehicleId(null);
+      } else {
+        alert(`שגיאה בעדכון מספר הרכב: ${res.error || 'מספר רכב כבר קיים במערכת'}`);
+      }
+    } catch (error) {
+      console.error('IPC Error updating vehicle plate:', error);
+      alert('שגיאה בתקשורת עם בסיס הנתונים');
     }
   };
 
@@ -124,8 +223,8 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
       startDate: policyForm.startDate,
       endDate: policyForm.endDate,
       premium: parseFloat(policyForm.premium) || 0,
-      vehicleId: ['חובה', 'מקיף', 'צד ג'].includes(policyForm.policyType) && policyForm.vehicleId 
-        ? parseInt(policyForm.vehicleId) 
+      vehicleId: ['חובה', 'מקיף', 'צד ג'].includes(policyForm.policyType) && policyForm.vehicleId
+        ? parseInt(policyForm.vehicleId)
         : null,
       coverageDetails: policyForm.coverageDetails,
     };
@@ -196,7 +295,7 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
   };
 
   const filteredClients = clients.filter(c =>
-    c.name.includes(searchTerm) || c.nationalId.includes(searchTerm)
+    c.name.includes(searchTerm) || c.nationalId.includes(searchTerm) || c.phone.includes(searchTerm) || c.email.includes(searchTerm) || c.address.includes(searchTerm)
   );
 
   return (
@@ -209,11 +308,11 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
         {/* ================= עמודה שמאלית: מדריך לקוחות ================= */}
         <div className="md:col-span-1 bg-white p-6 rounded-xl shadow-sm flex flex-col gap-4">
           <h2 className="text-xl font-bold border-b pb-2">מדריך לקוחות</h2>
-          
+
           <div className="relative">
             <input
               type="text"
-              placeholder="חפש לפי שם או תעודת זהות..."
+              placeholder="חפש לפי פרטי לקוח "
               className="w-full p-2 border border-gray-300 rounded-lg text-right text-sm"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -228,11 +327,10 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
                 <div
                   key={client.id}
                   onClick={() => { setSelectedClient(client); setActiveTab('info'); }}
-                  className={`p-3 rounded-lg border cursor-pointer transition text-right ${
-                    selectedClient?.id === client.id
-                      ? 'border-blue-500 bg-blue-50/50 font-medium'
-                      : 'border-gray-200 hover:bg-gray-50'
-                  }`}
+                  className={`p-3 rounded-lg border cursor-pointer transition text-right ${selectedClient?.id === client.id
+                    ? 'border-blue-500 bg-blue-50/50 font-medium'
+                    : 'border-gray-200 hover:bg-gray-50'
+                    }`}
                 >
                   <div className="font-semibold text-slate-700 text-sm">{client.name}</div>
                   <div className="text-xs text-gray-500">ת"ז: {client.nationalId}</div>
@@ -264,6 +362,20 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
               value={clientForm.phone}
               onChange={(e) => setClientForm({ ...clientForm, phone: e.target.value })}
             />
+            <input
+              type="text"
+              placeholder="אימייל"
+              className="w-full text-right text-xs p-2 border rounded"
+              value={clientForm.email}
+              onChange={(e) => setClientForm({ ...clientForm, email: e.target.value })}
+            />
+            <input
+              type="text"
+              placeholder="כתובת"
+              className="w-full text-right text-xs p-2 border rounded"
+              value={clientForm.address}
+              onChange={(e) => setClientForm({ ...clientForm, address: e.target.value })}
+            />
             <button type="submit" className="w-full bg-blue-600 text-white p-2 rounded-lg text-xs font-semibold mt-1 hover:bg-blue-700">
               הוסף לקוח +
             </button>
@@ -287,101 +399,190 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
               </div>
 
               <div className="flex border-b mb-6 justify-end gap-1 flex-nowrap">
-  
-  <button
-    onClick={() => setActiveTab('notes')}
-    className={`px-3 py-2 text-xs md:text-sm font-bold border-b-2 transition shrink-0 ${
-      activeTab === 'notes' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
-    }`}
-  >
-    תזכורות 📝
-  </button>
 
-  <button
-    onClick={() => setActiveTab('claims')}
-    className={`px-3 py-2 text-xs md:text-sm font-bold border-b-2 transition shrink-0 ${
-      activeTab === 'claims' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
-    }`}
-  >
-    תביעות 🚨
-  </button>
+                <button
+                  onClick={() => setActiveTab('notes')}
+                  className={`px-3 py-2 text-xs md:text-sm font-bold border-b-2 transition shrink-0 ${activeTab === 'notes' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                >
+                  תזכורות 📝
+                </button>
 
-  <button
-    onClick={() => setActiveTab('policies')}
-    className={`px-3 py-2 text-xs md:text-sm font-bold border-b-2 transition shrink-0 ${
-      activeTab === 'policies' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
-    }`}
-  >
-    פוליסות 📜
-  </button>
-  
-  <button
-    onClick={() => setActiveTab('vehicles')}
-    className={`px-3 py-2 text-xs md:text-sm font-bold border-b-2 transition shrink-0 ${
-      activeTab === 'vehicles' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
-    }`}
-  >
-    רכבים 🚗
-  </button>
+                <button
+                  onClick={() => setActiveTab('claims')}
+                  className={`px-3 py-2 text-xs md:text-sm font-bold border-b-2 transition shrink-0 ${activeTab === 'claims' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                >
+                  תביעות 🚨
+                </button>
 
-  <button
-    onClick={() => setActiveTab('documents')}
-    className={`px-3 py-2 text-xs md:text-sm font-bold border-b-2 transition shrink-0 ${
-      activeTab === 'documents' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
-    }`}
-  >
-    מסמכים 📁
-  </button>
-  
-  <button
-    onClick={() => setActiveTab('info')}
-    className={`px-3 py-2 text-xs md:text-sm font-bold border-b-2 transition shrink-0 ${
-      activeTab === 'info' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
-    }`}
-  >
-    כרטיס לקוח 👤
-  </button>
+                <button
+                  onClick={() => setActiveTab('policies')}
+                  className={`px-3 py-2 text-xs md:text-sm font-bold border-b-2 transition shrink-0 ${activeTab === 'policies' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                >
+                  פוליסות 📜
+                </button>
 
-</div>
+                <button
+                  onClick={() => setActiveTab('vehicles')}
+                  className={`px-3 py-2 text-xs md:text-sm font-bold border-b-2 transition shrink-0 ${activeTab === 'vehicles' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                >
+                  רכבים 🚗
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('documents')}
+                  className={`px-3 py-2 text-xs md:text-sm font-bold border-b-2 transition shrink-0 ${activeTab === 'documents' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                >
+                  מסמכים 📁
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('info')}
+                  className={`px-3 py-2 text-xs md:text-sm font-bold border-b-2 transition shrink-0 ${activeTab === 'info' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                >
+                  כרטיס לקוח 👤
+                </button>
+
+              </div>
               <div className="flex-1 text-right">
                 {activeTab === 'info' && (
                   <div className="space-y-4">
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 grid grid-cols-2 gap-4">
-                      <div>
-                        <span className="block text-xs text-gray-400 mb-1">מספר תעודת זהות</span>
-                        <span className="text-base font-medium">{selectedClient.nationalId}</span>
+                    <div className="bg-slate-50 p-5 rounded-xl border border-slate-100 relative">
+
+                      {/* Edit / Actions Header */}
+                      <div className="absolute top-4 left-4 flex gap-2">
+                        {isEditingClient ? (
+                          <>
+                            <button
+                              onClick={handleSaveClientInfo}
+                              className="px-3 py-1 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 transition-colors flex items-center gap-1"
+                            >
+                              שמור
+                            </button>
+                            <button
+                              onClick={() => {
+                                setEditClientForm({
+                                  name: selectedClient.name || '',
+                                  phone: selectedClient.phone || '',
+                                  email: selectedClient.email || '',
+                                  address: selectedClient.address || ''
+                                });
+                                setIsEditingClient(false);
+                              }}
+                              className="px-3 py-1 bg-slate-200 text-slate-600 text-xs font-semibold rounded-lg hover:bg-slate-300 transition-colors"
+                            >
+                              ביטול
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={() => setIsEditingClient(true)}
+                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-slate-100 rounded-lg transition-all"
+                            title="ערוך פרטי לקוח"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                            </svg>
+                          </button>
+                        )}
                       </div>
-                      <div>
-                        <span className="block text-xs text-gray-400 mb-1">שם מלא</span>
-                        <span className="text-base font-medium">{selectedClient.name}</span>
+
+                      {/* Form Content / View Grid */}
+                      <div className="grid grid-cols-2 gap-4 pt-4 text-right" dir="rtl">
+                        <div>
+                          <span className="block text-xs text-gray-400 mb-1">מספר תעודת זהות</span>
+                          <span className="text-base font-medium">{selectedClient.nationalId}</span>
+                        </div>
+
+                        <div>
+                          <span className="block text-xs text-gray-400 mb-1">שם מלא</span>
+                          {isEditingClient ? (
+                            <input
+                              type="text"
+                              value={editClientForm.name}
+                              onChange={(e) => setEditClientForm({ ...editClientForm, name: e.target.value })}
+                              className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          ) : (
+                            <span className="text-base font-medium">{selectedClient.name}</span>
+                          )}
+                        </div>
+
+                        <div className="col-span-2 border-t pt-3">
+                          <span className="block text-xs text-gray-400 mb-1">מספר טלפון</span>
+                          {isEditingClient ? (
+                            <input
+                              type="text"
+                              value={editClientForm.phone}
+                              onChange={(e) => setEditClientForm({ ...editClientForm, phone: e.target.value })}
+                              className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-xs"
+                              dir="ltr"
+                            />
+                          ) : (
+                            <span className="text-base font-medium" dir="ltr">{selectedClient.phone || 'לא הוזן מספר'}</span>
+                          )}
+                        </div>
+
+                        <div className="col-span-2 border-t pt-3">
+                          <span className="block text-xs text-gray-400 mb-1">אימייל</span>
+                          {isEditingClient ? (
+                            <input
+                              type="email"
+                              value={editClientForm.email}
+                              onChange={(e) => setEditClientForm({ ...editClientForm, email: e.target.value })}
+                              className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-md"
+                              dir="ltr"
+                            />
+                          ) : (
+                            <span className="text-base font-medium" dir="ltr">{selectedClient.email || 'לא הוזן אימייל'}</span>
+                          )}
+                        </div>
+
+                        <div className="col-span-2 border-t pt-3">
+                          <span className="block text-xs text-gray-400 mb-1">כתובת מגורים</span>
+                          {isEditingClient ? (
+                            <input
+                              type="text"
+                              value={editClientForm.address}
+                              onChange={(e) => setEditClientForm({ ...editClientForm, address: e.target.value })}
+                              className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          ) : (
+                            <span className="text-base font-medium">{selectedClient.address || 'לא הוזנה כתובת'}</span>
+                          )}
+                        </div>
                       </div>
-                      <div className="col-span-2 border-t pt-2 mt-2">
-                        <span className="block text-xs text-gray-400 mb-1">מספר טלפון</span>
-                        <span className="text-base font-medium">{selectedClient.phone || 'לא הוזן מספר'}</span>
-                      </div>
+
                     </div>
                   </div>
                 )}
                 {activeTab === 'documents' && (
-                <DocumentsView clientId={selectedClient.id} />
+                  <DocumentsView clientId={selectedClient.id} />
                 )}
 
                 {/* ◄--- RENDER THE COMPONENT WHEN TAB IS ACTIVE --- */}
                 {activeTab === 'claims' && (
-                <ClaimsView clientId={selectedClient.id} vehicles={vehicles} />
+                  <ClaimsView clientId={selectedClient.id} vehicles={vehicles} />
                 )}
                 {activeTab === 'notes' && (
-                    <NotesView clientId={selectedClient.id} />
+                  <NotesView clientId={selectedClient.id} />
                 )}
                 {activeTab === 'vehicles' && (
                   <div className="flex flex-col gap-6">
+
                     <form onSubmit={handleAddVehicle} className="bg-gray-50 p-4 rounded-xl border grid grid-cols-2 sm:grid-cols-4 gap-2 items-end">
-                      <div className="col-span-2 sm:col-span-4 font-semibold text-xs text-gray-500 mb-1">הוספת רכב חדש:</div>
+                      <div className="col-span-2 sm:col-span-4 font-semibold text-xs text-gray-500 mb-1 text-right">הוספת רכב חדש:</div>
+
                       <div>
                         <input
                           type="text"
                           placeholder="שנה"
-                          className="w-full text-xs p-2 border rounded"
+                          className="w-full text-right text-xs p-2 border rounded bg-white"
                           value={vehicleForm.year}
                           onChange={(e) => setVehicleForm({ ...vehicleForm, year: e.target.value })}
                         />
@@ -390,7 +591,7 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
                         <input
                           type="text"
                           placeholder="דגם"
-                          className="w-full text-xs p-2 border rounded"
+                          className="w-full text-right text-xs p-2 border rounded bg-white"
                           value={vehicleForm.model}
                           onChange={(e) => setVehicleForm({ ...vehicleForm, model: e.target.value })}
                         />
@@ -399,7 +600,7 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
                         <input
                           type="text"
                           placeholder="יצרן"
-                          className="w-full text-xs p-2 border rounded"
+                          className="w-full text-right text-xs p-2 border rounded bg-white"
                           value={vehicleForm.make}
                           onChange={(e) => setVehicleForm({ ...vehicleForm, make: e.target.value })}
                         />
@@ -408,12 +609,13 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
                         <input
                           type="text"
                           placeholder="מספר רכב (חובה)"
-                          className="w-full text-xs p-2 border border-blue-300 rounded"
+                          className="w-full text-right text-xs p-2 border border-blue-300 rounded bg-white"
                           value={vehicleForm.licensePlate}
                           onChange={(e) => setVehicleForm({ ...vehicleForm, licensePlate: e.target.value })}
                           required
                         />
                       </div>
+
                       <button type="submit" className="col-span-2 sm:col-span-4 bg-emerald-600 text-white p-2 rounded-lg text-xs font-bold mt-2 hover:bg-emerald-700">
                         שמור רכב במאגר
                       </button>
@@ -428,27 +630,76 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
                           if (v.status === 'sold') statusColor = "text-gray-500 bg-gray-100 border-gray-200 opacity-60";
                           if (v.status === 'out of order') statusColor = "text-amber-600 bg-amber-50 border-amber-200";
 
+                          const isEditingThisVehicle = editingVehicleId === v.id;
+
                           return (
-                            <div 
-                              key={v.id} 
-                              className={`p-3 border rounded-xl flex items-center justify-between gap-4 transition-all ${
-                                v.status === 'sold' ? 'bg-slate-50/50 border-dashed' : 'bg-white shadow-sm'
-                              }`}
+                            <div
+                              key={v.id}
+                              className={`p-3 border rounded-xl flex items-center justify-between gap-4 transition-all ${v.status === 'sold' ? 'bg-slate-50/50 border-dashed' : 'bg-white shadow-sm'
+                                }`}
                               dir="rtl"
                             >
-                              <div className="flex items-center gap-3">
-                                <div className="bg-slate-100 p-2 rounded-lg text-slate-600">🚗</div>
-                                <div>
+                              <div className="flex items-center gap-3 flex-1">
+                                <div className="bg-slate-100 p-2 rounded-lg text-slate-600 self-start mt-0.5">🚗</div>
+                                <div className="flex-1 min-w-0">
                                   <h4 className={`text-xs font-bold ${v.status === 'sold' ? 'text-gray-400 line-through' : 'text-slate-700'}`}>
                                     {v.make} {v.model} ({v.year})
                                   </h4>
-                                  <span className="font-mono text-[11px] font-semibold text-blue-600 tracking-wider">
-                                    {v.licensePlate}
-                                  </span>
+
+                                  {isEditingThisVehicle ? (
+                                    <div className="flex items-center gap-2 mt-1">
+                                      <input
+                                        type="text"
+                                        value={plateInput}
+                                        onChange={(e) => setPlateInput(e.target.value)}
+                                        className="bg-white border border-slate-300 rounded px-2 py-0.5 text-[11px] font-mono font-semibold text-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-500 w-32 tracking-wider"
+                                        dir="ltr"
+                                        autoFocus
+                                      />
+                                      <button
+                                        onClick={() => handleSavePlate(v.id)}
+                                        className="p-1 text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
+                                        title="שמור"
+                                      >
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                                        </svg>
+                                      </button>
+                                      <button
+                                        onClick={() => setEditingVehicleId(null)}
+                                        className="p-1 text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                                        title="ביטול"
+                                      >
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center gap-2 mt-0.5 group max-w-[160px]">
+                                      <span className="font-mono text-[11px] font-semibold text-blue-600 tracking-wider" dir="ltr">
+                                        {v.licensePlate}
+                                      </span>
+                                      {v.status !== 'sold' && (
+                                        <button
+                                          onClick={() => {
+                                            setPlateInput(v.licensePlate);
+                                            setEditingVehicleId(v.id);
+                                          }}
+                                          className="p-0.5 text-slate-400 hover:text-blue-600 hover:bg-slate-100 rounded transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
+                                          title="ערוך מספר רכב"
+                                        >
+                                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                          </svg>
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
 
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 shrink-0">
                                 <label className="text-[10px] font-bold text-slate-400">סטטוס:</label>
                                 <select
                                   value={v.status || "owned"}
@@ -472,7 +723,7 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
                   <div className="flex flex-col gap-6">
                     <form onSubmit={handleAddPolicy} className="bg-slate-50 p-4 rounded-xl border border-slate-200 grid grid-cols-2 md:grid-cols-3 gap-3 items-end text-right">
                       <div className="col-span-2 md:col-span-3 font-bold text-xs text-slate-500">הפקת פוליסה חדשה בתיק:</div>
-                      
+
                       <div>
                         <label className="block text-[10px] text-gray-400 mb-1">פרמיה (עלות בש"ח)</label>
                         <input
@@ -520,10 +771,10 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
 
                       <div>
                         <label className="block text-[10px] text-gray-400 mb-1">חברת ביטוח</label>
-                        <select 
+                        <select
                           className="w-full text-xs p-2 border rounded bg-white text-right"
                           value={policyForm.company}
-                          onChange={(e) => setPolicyForm({...policyForm, company: e.target.value})}
+                          onChange={(e) => setPolicyForm({ ...policyForm, company: e.target.value })}
                         >
                           <option value="הפניקס">הפניקס</option>
                           <option value="מגדל">מגדל</option>
@@ -536,10 +787,10 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
 
                       <div className="col-span-2 md:col-span-1">
                         <label className="block text-[10px] text-gray-400 mb-1">סוג כיסוי</label>
-                        <select 
+                        <select
                           className="w-full text-xs p-2 border rounded bg-white text-right"
                           value={policyForm.policyType}
-                          onChange={(e) => setPolicyForm({...policyForm, policyType: e.target.value, vehicleId: ''})}
+                          onChange={(e) => setPolicyForm({ ...policyForm, policyType: e.target.value, vehicleId: '' })}
                         >
                           <optgroup label="רכב">
                             <option value="חובה">ביטוח חובה</option>
@@ -558,10 +809,10 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
                       {['חובה', 'מקיף', 'צד ג'].includes(policyForm.policyType) ? (
                         <div>
                           <label className="block text-[10px] text-gray-400 mb-1">שיוך לרכב (אופציונלי)</label>
-                          <select 
+                          <select
                             className="w-full text-xs p-2 border rounded bg-white text-right"
                             value={policyForm.vehicleId}
-                            onChange={(e) => setPolicyForm({...policyForm, vehicleId: e.target.value})}
+                            onChange={(e) => setPolicyForm({ ...policyForm, vehicleId: e.target.value })}
                           >
                             <option value="">ללא שיוך רכב</option>
                             {vehicles.map(v => (
@@ -639,7 +890,7 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
                                       onClick={() => setEditingPolicy(p)}
                                       className="px-2 py-1 text-[10px] font-medium rounded text-blue-600 hover:bg-blue-50 border border-blue-200 transition"
                                     >
-                                      עריכה 
+                                      עריכה
                                     </button>
                                     {p.status === 'frozen' ? (
                                       <button
@@ -665,11 +916,11 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
                                       {statusLabel}
                                     </span>
                                   </td>
-                                  
+
                                   <td className="p-3 font-mono text-gray-600 font-semibold">{p.endDate}</td>
                                   <td className="p-3 font-mono text-gray-500">{p.startDate}</td>
                                   <td className="p-3 font-medium">₪{p.premium.toLocaleString()}</td>
-                                  
+
                                   <td className="p-3 text-gray-600 font-medium">
                                     {['חובה', 'מקיף', 'צד ג', 'ביטוח חובה', 'ביטוח מקיף', 'צד שלישי (ג\')'].includes(p.policyType) ? (
                                       <span className="font-mono text-blue-600 font-semibold">{getLicensePlateById(p.vehicleId)}</span>
@@ -706,7 +957,7 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
                   {['חובה', 'מקיף', 'צד ג', 'ביטוח חובה', 'ביטוח מקיף', 'צד שלישי (ג\')'].includes(editingPolicy.policyType) ? (
                     <div>
                       <label className="block text-xs font-bold text-slate-600 mb-1">שיוך לרכב</label>
-                      <select 
+                      <select
                         className="w-full text-xs p-2 border rounded bg-white"
                         value={editingPolicy.vehicleId || ""}
                         onChange={(e) => setEditingPolicy({ ...editingPolicy, vehicleId: e.target.value ? Number(e.target.value) : null })}

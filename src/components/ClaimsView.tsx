@@ -99,13 +99,12 @@ export const ClaimsView: React.FC<ClaimsViewProps> = ({ clientId, vehicles }) =>
   return (
     <div className="space-y-4" dir="rtl">
       {/* Action Header */}
-      <div className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
-        <span className="text-xs font-semibold text-slate-500">ניהול ומעקב תביעות לקוח אירועים פתוחים</span>
+      <div className="flex flex-row items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-100 w-full" dir="rtl">
+        <span className="text-xs font-bold text-slate-700">ניהול ומעקב תביעות לקוח - אירועים פתוחים</span>
         <button
           onClick={() => setIsFormOpen(!isFormOpen)}
-          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-            isFormOpen ? 'bg-slate-200 text-slate-700' : 'bg-blue-600 text-white hover:bg-blue-700'
-          }`}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${isFormOpen ? 'bg-slate-200 text-slate-700' : 'bg-blue-600 text-white hover:bg-blue-700'
+            }`}
         >
           {isFormOpen ? 'סגור טופס ✕' : 'פתח תביעה חדשה +'}
         </button>
@@ -186,7 +185,7 @@ export const ClaimsView: React.FC<ClaimsViewProps> = ({ clientId, vehicles }) =>
             <tr className="bg-slate-100 border-b text-[11px] font-bold text-slate-600">
               <th className="p-3 text-center">שינוי סטטוס</th>
               <th className="p-3">סכום תביעה</th>
-              <th className="p-3">רכב מיוח</th>
+              <th className="p-3">רכב משויך</th>
               <th className="p-3">מספר פוליסה</th>
               <th className="p-3">תיאור מקרה</th>
               <th className="p-3">תאריך אירוע</th>

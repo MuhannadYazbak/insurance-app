@@ -33,7 +33,10 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     nationalId TEXT UNIQUE NOT NULL,
-    phone TEXT
+    phone TEXT,
+    email TEXT,    -- ◄--- ADD THIS
+    address TEXT
+
   );
 
   CREATE TABLE IF NOT EXISTS vehicles (
@@ -138,13 +141,41 @@ ipcMain.handle('get-clients', async () => {
   }
 });
 
-ipcMain.handle('add-client', async (event, { name, nationalId, phone }) => {
+// Update this handler to accept and insert email and address
+ipcMain.handle('add-client', async (event, { name, nationalId, phone, email, address }) => {
   try {
-    const stmt = db.prepare('INSERT INTO clients (name, nationalId, phone) VALUES (?, ?, ?)');
-    stmt.run(name, nationalId, phone);
+    // Make sure to pass all 5 values into the statement
+    db.prepare(`
+      INSERT INTO clients (name, nationalId, phone, email, address) 
+      VALUES (?, ?, ?, ?, ?)
+    `).run(name, nationalId, phone || null, email || null, address || null);
+    
     return { success: true };
   } catch (err: any) {
-    console.error('Failed to add client:', err);
+    return { success: false, error: err.message };
+  }
+});
+
+// Update unified client information
+ipcMain.handle('update-client-info', async (event, { clientId, name, phone, email, address }) => {
+  try {
+    db.prepare(`
+      UPDATE clients 
+      SET name = ?, phone = ?, email = ?, address = ? 
+      WHERE id = ?
+    `).run(name, phone, email, address, clientId);
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+});
+
+// Update a client's phone number
+ipcMain.handle('update-client-phone', async (event, { clientId, phone }) => {
+  try {
+    db.prepare(`UPDATE clients SET phone = ? WHERE id = ?`).run(phone, clientId);
+    return { success: true };
+  } catch (err: any) {
     return { success: false, error: err.message };
   }
 });
@@ -163,6 +194,16 @@ ipcMain.handle('add-vehicle', async (event, { clientId, licensePlate, make, mode
   try {
     const stmt = db.prepare('INSERT INTO vehicles (clientId, licensePlate, make, model, year) VALUES (?, ?, ?, ?, ?)');
     stmt.run(clientId, licensePlate, make, model, year);
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+});
+
+// Update a vehicle's license plate number
+ipcMain.handle('update-vehicle-plate', async (event, { vehicleId, licensePlate }) => {
+  try {
+    db.prepare(`UPDATE vehicles SET licensePlate = ? WHERE id = ?`).run(licensePlate, vehicleId);
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message };
@@ -247,6 +288,8 @@ ipcMain.handle('global-search', async (event, searchTerm) => {
         c.name LIKE ? OR 
         c.nationalId LIKE ? OR 
         c.phone LIKE ? OR
+        c.email LIKE ? OR
+        c.address LIKE ? OR
         p.policyNumber LIKE ? OR 
         p.company LIKE ? OR 
         v.licensePlate LIKE ? OR 
@@ -257,7 +300,7 @@ ipcMain.handle('global-search', async (event, searchTerm) => {
     `).all(
       formattedSearch, formattedSearch, formattedSearch,
       formattedSearch, formattedSearch, formattedSearch, 
-      formattedSearch, formattedSearch
+      formattedSearch, formattedSearch, formattedSearch, formattedSearch
     );
 
     console.log(`✅ Cleaned duplicates down to ${results.length} unique client rows.`);

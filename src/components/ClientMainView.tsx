@@ -81,6 +81,7 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
     email: '',
     address: ''
   });
+  const [formErrors, setFormErrors] = useState<{ [key: string]: string }>({});
 
   // Sync form state when selectedClient changes or edit mode opens
   useEffect(() => {
@@ -118,11 +119,41 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
 
   const handleAddClient = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!clientForm.name || !clientForm.nationalId) return;
 
+    const errors: { [key: string]: string } = {};
+
+    // 1. Name validation
+    if (!clientForm.name || clientForm.name.trim().length < 2) {
+      errors.name = 'אנא הזן שם מלא';
+    }
+
+    // 2. National ID validation
+    if (!clientForm.nationalId || !validateIsraeliID(clientForm.nationalId)) {
+      errors.nationalId = 'תעודת זהות לא תקינה';
+    }
+
+    // 3. Phone validation (only validate if they started typing)
+    if (clientForm.phone && clientForm.phone.trim() !== '' && !validatePhone(clientForm.phone)) {
+      errors.phone = 'מספר טלפון לא תקין';
+    }
+
+    // 4. Email validation (only validate if they started typing)
+    if (clientForm.email && clientForm.email.trim() !== '' && !validateEmail(clientForm.email)) {
+      errors.email = 'כתובת אימייל לא תקינה';
+    }
+
+    // If there are validation errors, update the state and stop execution
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      return;
+    }
+
+    // Clear errors if validation passes
+    setFormErrors({});
+
+    // Proceed with DB insertion
     const res = await (window as any).electronAPI.addClient(clientForm);
     if (res.success) {
-      // Update the reset to include all fields:
       setClientForm({ name: '', nationalId: '', phone: '', email: '', address: '' });
       await loadClients();
     } else {
@@ -174,7 +205,21 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
 
   const handleAddVehicle = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedClient || !vehicleForm.licensePlate) return;
+
+    if (!selectedClient) return;
+
+    // Validate license plate
+    if (!vehicleForm.licensePlate || !validateLicensePlate(vehicleForm.licensePlate)) {
+      setFormErrors(prev => ({ ...prev, licensePlate: 'מספר רכב לא תקין (חייב להכיל 7 או 8 ספרות)' }));
+      return;
+    }
+
+    // Clear plate error if valid
+    setFormErrors(prev => {
+      const copy = { ...prev };
+      delete copy.licensePlate;
+      return copy;
+    });
 
     const payload = { clientId: selectedClient.id, ...vehicleForm };
     const res = await (window as any).electronAPI.addVehicle(payload);
@@ -184,6 +229,41 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
     } else {
       alert(`שגיאה בהוספת רכב: ${res.error}`);
     }
+  };
+
+  // Validates official Israeli ID card checksum (Luhn-like algorithm)
+  const validateIsraeliID = (id: string): boolean => {
+    const cleanId = id.trim().padStart(9, '0');
+    if (cleanId.length !== 9 || isNaN(Number(cleanId))) return false;
+
+    let sum = 0;
+    for (let i = 0; i < 9; i++) {
+      let digit = Number(cleanId[i]);
+      let step = digit * ((i % 2) + 1);
+      if (step > 9) step -= 9;
+      sum += step;
+    }
+    return sum % 10 === 0;
+  };
+
+  // Validates Israeli phone numbers (Mobile: 10 digits, Landline: 9 digits)
+  const validatePhone = (phone: string): boolean => {
+    const cleanPhone = phone.replace(/[- ]/g, '').trim();
+    // Checks if it starts with 0 and has either 9 or 10 digits in total
+    return /^0\d{8,9}$/.test(cleanPhone);
+  };
+
+  // Validates standard email format
+  const validateEmail = (email: string): boolean => {
+    if (!email || email.trim() === '') return true; // Optional field
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email.trim());
+  };
+
+  // Validates Israeli license plates (7 or 8 digits)
+  const validateLicensePlate = (plate: string): boolean => {
+    const cleanPlate = plate.replace(/[- ]/g, '').trim();
+    return /^\d{7,8}$/.test(cleanPlate);
   };
 
   const handleSavePlate = async (vehicleId: number) => {
@@ -210,11 +290,91 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
 
   const handleAddPolicy = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedClient || !policyForm.policyNumber || !policyForm.startDate || !policyForm.endDate) {
-      alert('נא למלא את כל שדות החובה לפוליסה (מספר, תאריך התחלה וסיום)');
-      return;
+
+    if (!selectedClient) return;
+
+    const errors: { [key: string]: string } = {};
+
+    // 1. Validate Policy Number
+    if (!policyForm.policyNumber || policyForm.policyNumber.trim() === '') {
+      errors.policyNumber = 'אנא הזן מספר פוליסה';
+    }
+    // 1. Validate Policy Number
+    if (!policyForm.policyNumber || policyForm.policyNumber.trim() === '') {
+      errors.policyNumber = 'אנא הזן מספר פוליסה';
     }
 
+    // 1.5 Validate Premium (Must be a positive number if provided)
+    if (policyForm.premium !== '') {
+      const premiumVal = parseFloat(policyForm.premium);
+      if (isNaN(premiumVal) || premiumVal < 0) {
+        errors.policyPremium = 'הפרמיה חייבת להיות מספר חיובי בלבד';
+      }
+    }
+
+    // 2. Setup Current Date (Today at 00:00:00)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // 3. Parse and Validate Start Date
+    let start: Date | null = null;
+    if (policyForm.startDate) {
+      start = new Date(policyForm.startDate);
+      if (isNaN(start.getTime())) {
+        errors.policyStartDate = 'תאריך התחלה לא תקין';
+      } else {
+        start.setHours(0, 0, 0, 0);
+        // Rule 1: Start date cannot be in the future
+        if (start > today) {
+          errors.policyStartDate = 'תאריך ההתחלה אינו יכול להיות בעתיד';
+        }
+      }
+    } else {
+      errors.policyStartDate = 'תאריך התחלה הוא שדה חובה';
+    }
+
+    // 4. Parse and Validate End Date
+    let end: Date | null = null;
+    if (policyForm.endDate) {
+      end = new Date(policyForm.endDate);
+      if (isNaN(end.getTime())) {
+        errors.policyEndDate = 'תאריך סיום לא תקין';
+      } else {
+        end.setHours(0, 0, 0, 0);
+        // Rule 2: End date must be after start date
+        if (start && !isNaN(start.getTime()) && end <= start) {
+          errors.policyEndDate = 'תאריך הסיום חייב להיות אחרי תאריך ההתחלה';
+        }
+      }
+    } else {
+      errors.policyEndDate = 'תאריך סיום הוא שדה חובה';
+    }
+
+    // DEBUG LOGGING: Open your DevTools (Ctrl+Shift+I) to inspect these values if it fails
+    console.log("Validation Check:", {
+      today: today.toDateString(),
+      startDateParsed: start ? start.toDateString() : "null",
+      endDateParsed: end ? end.toDateString() : "null",
+      errorsDetected: errors
+    });
+
+    // 5. Block Submission if Errors Exist
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(prev => ({ ...prev, ...errors }));
+      return; // <--- This strictly halts execution and prevents DB insert
+    }
+
+    // 6. Clear only Policy Errors if Valid
+    setFormErrors(prev => {
+      const copy = { ...prev };
+      delete copy.policyNumber;
+      delete copy.policyPremium;
+      delete copy.policyStartDate;
+      delete copy.policyEndDate;
+      return copy;
+    });
+
+    // 7. Proceed with DB insertion
     const payload = {
       clientId: selectedClient.id,
       policyNumber: policyForm.policyNumber,
@@ -341,41 +501,66 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
 
           <form onSubmit={handleAddClient} className="border-t pt-4 flex flex-col gap-2">
             <h3 className="text-xs font-bold text-gray-400 mb-1">רישום לקוח מהיר</h3>
-            <input
-              type="text"
-              placeholder="שם מלא"
-              className="w-full text-right text-xs p-2 border rounded"
-              value={clientForm.name}
-              onChange={(e) => setClientForm({ ...clientForm, name: e.target.value })}
-            />
-            <input
-              type="text"
-              placeholder="תעודת זהות"
-              className="w-full text-right text-xs p-2 border rounded"
-              value={clientForm.nationalId}
-              onChange={(e) => setClientForm({ ...clientForm, nationalId: e.target.value })}
-            />
-            <input
-              type="text"
-              placeholder="טלפון"
-              className="w-full text-right text-xs p-2 border rounded"
-              value={clientForm.phone}
-              onChange={(e) => setClientForm({ ...clientForm, phone: e.target.value })}
-            />
-            <input
-              type="text"
-              placeholder="אימייל"
-              className="w-full text-right text-xs p-2 border rounded"
-              value={clientForm.email}
-              onChange={(e) => setClientForm({ ...clientForm, email: e.target.value })}
-            />
-            <input
-              type="text"
-              placeholder="כתובת"
-              className="w-full text-right text-xs p-2 border rounded"
-              value={clientForm.address}
-              onChange={(e) => setClientForm({ ...clientForm, address: e.target.value })}
-            />
+
+            {/* Name Input */}
+            <div>
+              <input
+                type="text"
+                placeholder="שם מלא"
+                className={`w-full text-right text-xs p-2 border rounded ${formErrors.name ? 'border-red-500 bg-red-50' : 'border-gray-200'}`}
+                value={clientForm.name}
+                onChange={(e) => setClientForm({ ...clientForm, name: e.target.value })}
+              />
+              {formErrors.name && <p className="text-[10px] text-red-500 text-right mt-0.5">{formErrors.name}</p>}
+            </div>
+
+            {/* National ID Input */}
+            <div>
+              <input
+                type="text"
+                placeholder="תעודת זהות"
+                className={`w-full text-right text-xs p-2 border rounded ${formErrors.nationalId ? 'border-red-500 bg-red-50' : 'border-gray-200'}`}
+                value={clientForm.nationalId}
+                onChange={(e) => setClientForm({ ...clientForm, nationalId: e.target.value })}
+              />
+              {formErrors.nationalId && <p className="text-[10px] text-red-500 text-right mt-0.5">{formErrors.nationalId}</p>}
+            </div>
+
+            {/* Phone Input */}
+            <div>
+              <input
+                type="text"
+                placeholder="טלפון"
+                className={`w-full text-right text-xs p-2 border rounded ${formErrors.phone ? 'border-red-500 bg-red-50' : 'border-gray-200'}`}
+                value={clientForm.phone}
+                onChange={(e) => setClientForm({ ...clientForm, phone: e.target.value })}
+              />
+              {formErrors.phone && <p className="text-[10px] text-red-500 text-right mt-0.5">{formErrors.phone}</p>}
+            </div>
+
+            {/* Email Input */}
+            <div>
+              <input
+                type="text"
+                placeholder="אימייל"
+                className={`w-full text-right text-xs p-2 border rounded ${formErrors.email ? 'border-red-500 bg-red-50' : 'border-gray-200'}`}
+                value={clientForm.email}
+                onChange={(e) => setClientForm({ ...clientForm, email: e.target.value })}
+              />
+              {formErrors.email && <p className="text-[10px] text-red-500 text-right mt-0.5">{formErrors.email}</p>}
+            </div>
+
+            {/* Address Input */}
+            <div>
+              <input
+                type="text"
+                placeholder="כתובת"
+                className="w-full text-right text-xs p-2 border rounded border-gray-200"
+                value={clientForm.address}
+                onChange={(e) => setClientForm({ ...clientForm, address: e.target.value })}
+              />
+            </div>
+
             <button type="submit" className="w-full bg-blue-600 text-white p-2 rounded-lg text-xs font-semibold mt-1 hover:bg-blue-700">
               הוסף לקוח +
             </button>
@@ -567,7 +752,7 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
 
                 {/* ◄--- RENDER THE COMPONENT WHEN TAB IS ACTIVE --- */}
                 {activeTab === 'claims' && (
-                  <ClaimsView clientId={selectedClient.id} vehicles={vehicles} />
+                  <ClaimsView clientId={selectedClient.id} vehicles={vehicles} policies={policies} />
                 )}
                 {activeTab === 'notes' && (
                   <NotesView clientId={selectedClient.id} />
@@ -578,42 +763,67 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
                     <form onSubmit={handleAddVehicle} className="bg-gray-50 p-4 rounded-xl border grid grid-cols-2 sm:grid-cols-4 gap-2 items-end">
                       <div className="col-span-2 sm:col-span-4 font-semibold text-xs text-gray-500 mb-1 text-right">הוספת רכב חדש:</div>
 
+                      {/* שנה */}
                       <div>
                         <input
                           type="text"
                           placeholder="שנה"
-                          className="w-full text-right text-xs p-2 border rounded bg-white"
+                          className="w-full text-right text-xs p-2 border rounded bg-white border-gray-200"
                           value={vehicleForm.year}
                           onChange={(e) => setVehicleForm({ ...vehicleForm, year: e.target.value })}
                         />
                       </div>
+
+                      {/* דגם */}
                       <div>
                         <input
                           type="text"
                           placeholder="דגם"
-                          className="w-full text-right text-xs p-2 border rounded bg-white"
+                          className="w-full text-right text-xs p-2 border rounded bg-white border-gray-200"
                           value={vehicleForm.model}
                           onChange={(e) => setVehicleForm({ ...vehicleForm, model: e.target.value })}
                         />
                       </div>
+
+                      {/* יצרן */}
                       <div>
                         <input
                           type="text"
                           placeholder="יצרן"
-                          className="w-full text-right text-xs p-2 border rounded bg-white"
+                          className="w-full text-right text-xs p-2 border rounded bg-white border-gray-200"
                           value={vehicleForm.make}
                           onChange={(e) => setVehicleForm({ ...vehicleForm, make: e.target.value })}
                         />
                       </div>
-                      <div>
+
+                      {/* מספר רכב (חובה) */}
+                      <div className="relative">
                         <input
                           type="text"
                           placeholder="מספר רכב (חובה)"
-                          className="w-full text-right text-xs p-2 border border-blue-300 rounded bg-white"
+                          className={`w-full text-right text-xs p-2 border rounded bg-white transition-colors ${formErrors.licensePlate
+                            ? 'border-red-500 bg-red-50/50 focus:outline-none'
+                            : 'border-blue-300'
+                            }`}
                           value={vehicleForm.licensePlate}
-                          onChange={(e) => setVehicleForm({ ...vehicleForm, licensePlate: e.target.value })}
+                          onChange={(e) => {
+                            setVehicleForm({ ...vehicleForm, licensePlate: e.target.value });
+                            // Clear the plate error as soon as they start typing again
+                            if (formErrors.licensePlate) {
+                              setFormErrors(prev => {
+                                const copy = { ...prev };
+                                delete copy.licensePlate;
+                                return copy;
+                              });
+                            }
+                          }}
                           required
                         />
+                        {formErrors.licensePlate && (
+                          <span className="absolute -bottom-4 right-0 text-[9px] text-red-500 text-right whitespace-nowrap">
+                            {formErrors.licensePlate}
+                          </span>
+                        )}
                       </div>
 
                       <button type="submit" className="col-span-2 sm:col-span-4 bg-emerald-600 text-white p-2 rounded-lg text-xs font-bold mt-2 hover:bg-emerald-700">
@@ -724,55 +934,95 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
                     <form onSubmit={handleAddPolicy} className="bg-slate-50 p-4 rounded-xl border border-slate-200 grid grid-cols-2 md:grid-cols-3 gap-3 items-end text-right">
                       <div className="col-span-2 md:col-span-3 font-bold text-xs text-slate-500">הפקת פוליסה חדשה בתיק:</div>
 
-                      <div>
+                      {/* פרמיה */}
+                      <div className="relative">
                         <label className="block text-[10px] text-gray-400 mb-1">פרמיה (עלות בש"ח)</label>
                         <input
                           type="number"
                           placeholder="₪"
-                          className="w-full text-xs p-2 border rounded"
+                          className={`w-full text-xs p-2 border rounded ${formErrors.policyPremium ? 'border-red-500 bg-red-50/50' : 'border-gray-200'
+                            }`}
                           value={policyForm.premium}
-                          onChange={(e) => setPolicyForm({ ...policyForm, premium: e.target.value })}
+                          onChange={(e) => {
+                            setPolicyForm({ ...policyForm, premium: e.target.value });
+                            if (formErrors.policyPremium) {
+                              setFormErrors(prev => { const c = { ...prev }; delete c.policyPremium; return c; });
+                            }
+                          }}
                         />
+                        {formErrors.policyPremium && (
+                          <span className="absolute -bottom-4 right-0 text-[9px] text-red-500 whitespace-nowrap">{formErrors.policyPremium}</span>
+                        )}
                       </div>
 
-                      <div>
+                      {/* מספר פוליסה */}
+                      <div className="relative">
                         <label className="block text-[10px] text-gray-400 mb-1">מספר פוליסה (חובה)</label>
                         <input
                           type="text"
                           placeholder="לדוגמה: 9845122"
-                          className="w-full text-xs p-2 border rounded"
+                          className={`w-full text-xs p-2 border rounded ${formErrors.policyNumber ? 'border-red-500 bg-red-50/50' : 'border-gray-200'}`}
                           value={policyForm.policyNumber}
-                          onChange={(e) => setPolicyForm({ ...policyForm, policyNumber: e.target.value })}
+                          onChange={(e) => {
+                            setPolicyForm({ ...policyForm, policyNumber: e.target.value });
+                            if (formErrors.policyNumber) {
+                              setFormErrors(prev => { const c = { ...prev }; delete c.policyNumber; return c; });
+                            }
+                          }}
                           required
                         />
+                        {formErrors.policyNumber && (
+                          <span className="absolute -bottom-4 right-0 text-[9px] text-red-500 whitespace-nowrap">{formErrors.policyNumber}</span>
+                        )}
                       </div>
 
-                      <div>
+                      {/* תאריך סיום */}
+                      <div className="relative">
                         <label className="block text-[10px] text-gray-400 mb-1">תאריך סיום (חובה)</label>
                         <input
                           type="date"
-                          className="w-full text-xs p-2 border border-red-200 rounded font-mono"
+                          className={`w-full text-xs p-2 border rounded font-mono ${formErrors.policyEndDate ? 'border-red-500 bg-red-50/50' : 'border-red-200'
+                            }`}
                           value={policyForm.endDate}
-                          onChange={(e) => setPolicyForm({ ...policyForm, endDate: e.target.value })}
+                          onChange={(e) => {
+                            setPolicyForm({ ...policyForm, endDate: e.target.value });
+                            if (formErrors.policyEndDate) {
+                              setFormErrors(prev => { const c = { ...prev }; delete c.policyEndDate; return c; });
+                            }
+                          }}
                           required
                         />
+                        {formErrors.policyEndDate && (
+                          <span className="absolute -bottom-4 right-0 text-[9px] text-red-500 whitespace-nowrap">{formErrors.policyEndDate}</span>
+                        )}
                       </div>
 
-                      <div>
+                      {/* תאריך התחלה */}
+                      <div className="relative">
                         <label className="block text-[10px] text-gray-400 mb-1">תאריך התחלה (חובה)</label>
                         <input
                           type="date"
-                          className="w-full text-xs p-2 border border-emerald-200 rounded font-mono"
+                          className={`w-full text-xs p-2 border rounded font-mono ${formErrors.policyStartDate ? 'border-red-500 bg-red-50/50' : 'border-emerald-200'
+                            }`}
                           value={policyForm.startDate}
-                          onChange={(e) => setPolicyForm({ ...policyForm, startDate: e.target.value })}
+                          onChange={(e) => {
+                            setPolicyForm({ ...policyForm, startDate: e.target.value });
+                            if (formErrors.policyStartDate) {
+                              setFormErrors(prev => { const c = { ...prev }; delete c.policyStartDate; return c; });
+                            }
+                          }}
                           required
                         />
+                        {formErrors.policyStartDate && (
+                          <span className="absolute -bottom-4 right-0 text-[9px] text-red-500 whitespace-nowrap">{formErrors.policyStartDate}</span>
+                        )}
                       </div>
 
+                      {/* חברת ביטוח */}
                       <div>
                         <label className="block text-[10px] text-gray-400 mb-1">חברת ביטוח</label>
                         <select
-                          className="w-full text-xs p-2 border rounded bg-white text-right"
+                          className="w-full text-xs p-2 border rounded bg-white text-right border-gray-200"
                           value={policyForm.company}
                           onChange={(e) => setPolicyForm({ ...policyForm, company: e.target.value })}
                         >
@@ -785,10 +1035,11 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
                         </select>
                       </div>
 
+                      {/* סוג כיסוי */}
                       <div className="col-span-2 md:col-span-1">
                         <label className="block text-[10px] text-gray-400 mb-1">סוג כיסוי</label>
                         <select
-                          className="w-full text-xs p-2 border rounded bg-white text-right"
+                          className="w-full text-xs p-2 border rounded bg-white text-right border-gray-200"
                           value={policyForm.policyType}
                           onChange={(e) => setPolicyForm({ ...policyForm, policyType: e.target.value, vehicleId: '' })}
                         >
@@ -806,11 +1057,12 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
                         </select>
                       </div>
 
+                      {/* שיוך לרכב / פירוט כיסוי */}
                       {['חובה', 'מקיף', 'צד ג'].includes(policyForm.policyType) ? (
                         <div>
                           <label className="block text-[10px] text-gray-400 mb-1">שיוך לרכב (אופציונלי)</label>
                           <select
-                            className="w-full text-xs p-2 border rounded bg-white text-right"
+                            className="w-full text-xs p-2 border rounded bg-white text-right border-gray-200"
                             value={policyForm.vehicleId}
                             onChange={(e) => setPolicyForm({ ...policyForm, vehicleId: e.target.value })}
                           >
@@ -826,7 +1078,7 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
                           <input
                             type="text"
                             placeholder="לדוגמה: כולל תרופות מחוץ לסל"
-                            className="w-full text-xs p-2 border rounded text-right"
+                            className="w-full text-xs p-2 border rounded text-right border-gray-200"
                             value={policyForm.coverageDetails}
                             onChange={(e) => setPolicyForm({ ...policyForm, coverageDetails: e.target.value })}
                           />

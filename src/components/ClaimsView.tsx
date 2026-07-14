@@ -22,14 +22,26 @@ interface Claim {
   model?: string;
 }
 
+interface Policy {
+  id: number;
+  policyNumber: string;
+  policyType: string;
+  company: string;
+  vehicleId?: number | null; // <-- Add this field
+}
+
 interface ClaimsViewProps {
   clientId: number;
   vehicles: Vehicle[];
+  policies: Policy[];
 }
 
-export const ClaimsView: React.FC<ClaimsViewProps> = ({ clientId, vehicles }) => {
+export const ClaimsView: React.FC<ClaimsViewProps> = ({ clientId, vehicles, policies }) => {
   const [claims, setClaims] = useState<Claim[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
+
+  // Validation Error State
+  const [formErrors, setFormErrors] = useState<{ [key: string]: string }>({});
 
   // Form parameters
   const [incidentDate, setIncidentDate] = useState('');
@@ -48,19 +60,63 @@ export const ClaimsView: React.FC<ClaimsViewProps> = ({ clientId, vehicles }) =>
   useEffect(() => {
     fetchClaims();
     setIsFormOpen(false);
+    setFormErrors({}); // Clear errors when client changes
   }, [clientId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!incidentDate || !description.trim()) {
-      alert('נא למלא תאריך אירוע ותיאור התביעה');
+
+    const errors: { [key: string]: string } = {};
+
+    // 1. Basic field presence check for description
+    if (!description.trim()) {
+      errors.description = 'אנא הזן תיאור מקרה חוקי';
+    }
+
+    // 2. MANDATORY: Policy Number Selection validation
+    if (!policyNumber) {
+      errors.policyNumber = 'חובה לשייך את התביעה לפוליסת ביטוח קיימת';
+    }
+
+    // 3. Incident Date validation (Cannot be a future date)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (incidentDate) {
+      const incident = new Date(incidentDate);
+      if (isNaN(incident.getTime())) {
+        errors.incidentDate = 'תאריך אירוע לא תקין';
+      } else {
+        incident.setHours(0, 0, 0, 0);
+        if (incident > today) {
+          errors.incidentDate = 'תאריך האירוע אינו יכול להיות בעתיד';
+        }
+      }
+    } else {
+      errors.incidentDate = 'תאריך האירוע הוא שדה חובה';
+    }
+
+    // 4. Estimated Payout validation (Must be positive)
+    if (estimatedPayout !== '') {
+      const payoutVal = parseFloat(estimatedPayout);
+      if (isNaN(payoutVal) || payoutVal < 0) {
+        errors.estimatedPayout = 'סכום התביעה חייב להיות חיובי';
+      }
+    }
+
+    // Block submission if any validations fail
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
       return;
     }
+
+    // Clear errors if valid
+    setFormErrors({});
 
     const payload = {
       clientId,
       vehicleId: vehicleId ? Number(vehicleId) : null,
-      policyNumber: policyNumber || null,
+      policyNumber, // Will now be safely bound to a real selected policy number string
       incidentDate,
       description,
       estimatedPayout: parseFloat(estimatedPayout) || 0,
@@ -77,6 +133,30 @@ export const ClaimsView: React.FC<ClaimsViewProps> = ({ clientId, vehicles }) =>
       fetchClaims();
     } else {
       alert(`שגיאה ברישום תביעה: ${res.error}`);
+    }
+  };
+
+  const handlePolicyChange = (selectedNum: string) => {
+    setPolicyNumber(selectedNum);
+
+    // Clear policy validation error if it was active
+    if (formErrors.policyNumber) {
+      setFormErrors(prev => {
+        const c = { ...prev };
+        delete c.policyNumber;
+        return c;
+      });
+    }
+
+    // Find the selected policy object
+    const selectedPolicy = policies.find(p => p.policyNumber === selectedNum);
+
+    if (selectedPolicy && selectedPolicy.vehicleId) {
+      // Automatically match the vehicle linked to this policy
+      setVehicleId(selectedPolicy.vehicleId.toString());
+    } else {
+      // Clear vehicle selection if the policy has no vehicle linked
+      setVehicleId('');
     }
   };
 
@@ -102,7 +182,10 @@ export const ClaimsView: React.FC<ClaimsViewProps> = ({ clientId, vehicles }) =>
       <div className="flex flex-row items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-100 w-full" dir="rtl">
         <span className="text-xs font-bold text-slate-700">ניהול ומעקב תביעות לקוח - אירועים פתוחים</span>
         <button
-          onClick={() => setIsFormOpen(!isFormOpen)}
+          onClick={() => {
+            setIsFormOpen(!isFormOpen);
+            setFormErrors({});
+          }}
           className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${isFormOpen ? 'bg-slate-200 text-slate-700' : 'bg-blue-600 text-white hover:bg-blue-700'
             }`}
         >
@@ -113,34 +196,65 @@ export const ClaimsView: React.FC<ClaimsViewProps> = ({ clientId, vehicles }) =>
       {/* Hidden Open Claim Form */}
       {isFormOpen && (
         <form onSubmit={handleSubmit} className="bg-slate-50 p-4 rounded-xl border border-slate-200 grid grid-cols-1 md:grid-cols-3 gap-3 text-right">
-          <div>
+          
+          {/* Row 1: Date, Policy, Vehicle */}
+          {/* תאריך אירוע */}
+          <div className="relative">
             <label className="block text-[10px] text-gray-400 mb-1">תאריך האירוע (חובה)</label>
             <input
               type="date"
-              className="w-full text-xs p-2 border rounded bg-white font-mono"
+              className={`w-full text-xs p-2 border rounded font-mono ${
+                formErrors.incidentDate ? 'border-red-500 bg-red-50/50' : 'border-gray-200'
+              }`}
               value={incidentDate}
-              onChange={(e) => setIncidentDate(e.target.value)}
+              onChange={(e) => {
+                setIncidentDate(e.target.value);
+                if (formErrors.incidentDate) {
+                  setFormErrors(prev => { const c = { ...prev }; delete c.incidentDate; return c; });
+                }
+              }}
               required
             />
+            {formErrors.incidentDate && (
+              <span className="absolute -bottom-4 right-0 text-[9px] text-red-500 whitespace-nowrap">{formErrors.incidentDate}</span>
+            )}
           </div>
 
-          <div>
-            <label className="block text-[10px] text-gray-400 mb-1">מספר פוליסה רלוונטי</label>
-            <input
-              type="text"
-              placeholder="לדוגמה: 493021"
-              className="w-full text-xs p-2 border rounded bg-white"
+          {/* מספר פוליסה רלוונטי (חובה) */}
+          <div className="relative">
+            <label className="block text-[10px] text-gray-400 mb-1">מספר פוליסה משויכת (חובה)</label>
+            <select
+              className={`w-full text-xs p-2 border rounded bg-white text-right ${
+                formErrors.policyNumber ? 'border-red-500 bg-red-50/50' : 'border-gray-200'
+              }`}
               value={policyNumber}
-              onChange={(e) => setPolicyNumber(e.target.value)}
-            />
+              onChange={(e) => handlePolicyChange(e.target.value)}
+              required
+            >
+              <option value="">-- בחר פוליסה מתיק הלקוח --</option>
+              {policies.map(p => (
+                <option key={p.id} value={p.policyNumber}>
+                  {p.company} - {p.policyType} ({p.policyNumber})
+                </option>
+              ))}
+            </select>
+            {formErrors.policyNumber && (
+              <span className="absolute -bottom-4 right-0 text-[9px] text-red-500 whitespace-nowrap">{formErrors.policyNumber}</span>
+            )}
           </div>
 
+          {/* שיוך לרכב */}
           <div>
             <label className="block text-[10px] text-gray-400 mb-1">שיוך לרכב מבוטח</label>
             <select
-              className="w-full text-xs p-2 border rounded bg-white text-right"
+              className={`w-full text-xs p-2 border rounded text-right border-gray-200 ${
+                policyNumber && policies.find(p => p.policyNumber === policyNumber)?.vehicleId 
+                  ? 'bg-slate-100 text-gray-500 cursor-not-allowed font-semibold' 
+                  : 'bg-white text-black'
+              }`}
               value={vehicleId}
               onChange={(e) => setVehicleId(e.target.value)}
+              disabled={!!(policyNumber && policies.find(p => p.policyNumber === policyNumber)?.vehicleId)}
             >
               <option value="">ללא שיוך רכב</option>
               {vehicles.map(v => (
@@ -149,27 +263,50 @@ export const ClaimsView: React.FC<ClaimsViewProps> = ({ clientId, vehicles }) =>
             </select>
           </div>
 
-          <div className="md:col-span-2">
+          {/* Row 2: Description (takes up 2 columns) and Payout (takes up 1 column) */}
+          {/* תיאור הנזק */}
+          <div className="md:col-span-2 relative">
             <label className="block text-[10px] text-gray-400 mb-1">תיאור הנזק / פרטי האירוע (חובה)</label>
             <input
               type="text"
-              placeholder="פרט בקצרה את מהות האירוע (לדוגמה: תאונת חזית-אחור, נזק מים בדירה...)"
-              className="w-full text-xs p-2 border rounded bg-white"
+              placeholder="פרט בקצרה את מהות האירוע (לדוגמה: תאונת חזית-אחור...)"
+              className={`w-full text-xs p-2 border rounded bg-white ${
+                formErrors.description ? 'border-red-500 bg-red-50/50' : 'border-gray-200'
+              }`}
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(e) => {
+                setDescription(e.target.value);
+                if (formErrors.description) {
+                  setFormErrors(prev => { const c = { ...prev }; delete c.description; return c; });
+                }
+              }}
               required
             />
+            {formErrors.description && (
+              <span className="absolute -bottom-4 right-0 text-[9px] text-red-500 whitespace-nowrap">{formErrors.description}</span>
+            )}
           </div>
 
-          <div>
+          {/* סכום מוערך */}
+          <div className="relative">
             <label className="block text-[10px] text-gray-400 mb-1">סכום תביעה מוערך (ש"ח)</label>
             <input
               type="number"
               placeholder="₪"
-              className="w-full text-xs p-2 border rounded bg-white font-mono"
+              className={`w-full text-xs p-2 border rounded font-mono ${
+                formErrors.estimatedPayout ? 'border-red-500 bg-red-50/50' : 'border-gray-200'
+              }`}
               value={estimatedPayout}
-              onChange={(e) => setEstimatedPayout(e.target.value)}
+              onChange={(e) => {
+                setEstimatedPayout(e.target.value);
+                if (formErrors.estimatedPayout) {
+                  setFormErrors(prev => { const c = { ...prev }; delete c.estimatedPayout; return c; });
+                }
+              }}
             />
+            {formErrors.estimatedPayout && (
+              <span className="absolute -bottom-4 right-0 text-[9px] text-red-500 whitespace-nowrap">{formErrors.estimatedPayout}</span>
+            )}
           </div>
 
           <button type="submit" className="md:col-span-3 bg-emerald-600 hover:bg-emerald-700 text-white p-2 rounded-lg text-xs font-bold transition mt-2">

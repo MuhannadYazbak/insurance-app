@@ -196,16 +196,15 @@ export const ClaimsView: React.FC<ClaimsViewProps> = ({ clientId, vehicles, poli
       {/* Hidden Open Claim Form */}
       {isFormOpen && (
         <form onSubmit={handleSubmit} className="bg-slate-50 p-4 rounded-xl border border-slate-200 grid grid-cols-1 md:grid-cols-3 gap-3 text-right">
-          
+
           {/* Row 1: Date, Policy, Vehicle */}
           {/* תאריך אירוע */}
           <div className="relative">
             <label className="block text-[10px] text-gray-400 mb-1">תאריך האירוע (חובה)</label>
             <input
               type="date"
-              className={`w-full text-xs p-2 border rounded font-mono ${
-                formErrors.incidentDate ? 'border-red-500 bg-red-50/50' : 'border-gray-200'
-              }`}
+              className={`w-full text-xs p-2 border rounded font-mono ${formErrors.incidentDate ? 'border-red-500 bg-red-50/50' : 'border-gray-200'
+                }`}
               value={incidentDate}
               onChange={(e) => {
                 setIncidentDate(e.target.value);
@@ -224,9 +223,8 @@ export const ClaimsView: React.FC<ClaimsViewProps> = ({ clientId, vehicles, poli
           <div className="relative">
             <label className="block text-[10px] text-gray-400 mb-1">מספר פוליסה משויכת (חובה)</label>
             <select
-              className={`w-full text-xs p-2 border rounded bg-white text-right ${
-                formErrors.policyNumber ? 'border-red-500 bg-red-50/50' : 'border-gray-200'
-              }`}
+              className={`w-full text-xs p-2 border rounded bg-white text-right ${formErrors.policyNumber ? 'border-red-500 bg-red-50/50' : 'border-gray-200'
+                }`}
               value={policyNumber}
               onChange={(e) => handlePolicyChange(e.target.value)}
               required
@@ -247,11 +245,10 @@ export const ClaimsView: React.FC<ClaimsViewProps> = ({ clientId, vehicles, poli
           <div>
             <label className="block text-[10px] text-gray-400 mb-1">שיוך לרכב מבוטח</label>
             <select
-              className={`w-full text-xs p-2 border rounded text-right border-gray-200 ${
-                policyNumber && policies.find(p => p.policyNumber === policyNumber)?.vehicleId 
-                  ? 'bg-slate-100 text-gray-500 cursor-not-allowed font-semibold' 
+              className={`w-full text-xs p-2 border rounded text-right border-gray-200 ${policyNumber && policies.find(p => p.policyNumber === policyNumber)?.vehicleId
+                  ? 'bg-slate-100 text-gray-500 cursor-not-allowed font-semibold'
                   : 'bg-white text-black'
-              }`}
+                }`}
               value={vehicleId}
               onChange={(e) => setVehicleId(e.target.value)}
               disabled={!!(policyNumber && policies.find(p => p.policyNumber === policyNumber)?.vehicleId)}
@@ -270,9 +267,8 @@ export const ClaimsView: React.FC<ClaimsViewProps> = ({ clientId, vehicles, poli
             <input
               type="text"
               placeholder="פרט בקצרה את מהות האירוע (לדוגמה: תאונת חזית-אחור...)"
-              className={`w-full text-xs p-2 border rounded bg-white ${
-                formErrors.description ? 'border-red-500 bg-red-50/50' : 'border-gray-200'
-              }`}
+              className={`w-full text-xs p-2 border rounded bg-white ${formErrors.description ? 'border-red-500 bg-red-50/50' : 'border-gray-200'
+                }`}
               value={description}
               onChange={(e) => {
                 setDescription(e.target.value);
@@ -293,9 +289,8 @@ export const ClaimsView: React.FC<ClaimsViewProps> = ({ clientId, vehicles, poli
             <input
               type="number"
               placeholder="₪"
-              className={`w-full text-xs p-2 border rounded font-mono ${
-                formErrors.estimatedPayout ? 'border-red-500 bg-red-50/50' : 'border-gray-200'
-              }`}
+              className={`w-full text-xs p-2 border rounded font-mono ${formErrors.estimatedPayout ? 'border-red-500 bg-red-50/50' : 'border-gray-200'
+                }`}
               value={estimatedPayout}
               onChange={(e) => {
                 setEstimatedPayout(e.target.value);
@@ -316,7 +311,7 @@ export const ClaimsView: React.FC<ClaimsViewProps> = ({ clientId, vehicles, poli
       )}
 
       {/* Claims Records Data Sheet */}
-      <div className="border rounded-xl overflow-hidden shadow-sm bg-white">
+      <div className="border rounded-xl overflow-hidden shadow-sm bg-white max-h-[340px] overflow-y-auto relative scrollbar-thin">
         <table className="w-full text-right border-collapse">
           <thead>
             <tr className="bg-slate-100 border-b text-[11px] font-bold text-slate-600">

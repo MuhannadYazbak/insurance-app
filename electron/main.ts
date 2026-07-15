@@ -28,15 +28,15 @@ const db = new Database(dbPath);
 
 // Ensure database tables exist with relational constraints
 // Update this specific block inside electron/main.ts
+// 1. Core structural schemas (Run first)
 db.exec(`
   CREATE TABLE IF NOT EXISTS clients (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     nationalId TEXT UNIQUE NOT NULL,
     phone TEXT,
-    email TEXT,    -- ◄--- ADD THIS
+    email TEXT,
     address TEXT
-
   );
 
   CREATE TABLE IF NOT EXISTS vehicles (
@@ -60,10 +60,11 @@ db.exec(`
     startDate TEXT,
     endDate TEXT,
     premium REAL,
-    coverageDetails TEXT, -- ◄--- ADD THIS LINE HERE
+    coverageDetails TEXT,
     FOREIGN KEY(clientId) REFERENCES clients(id) ON DELETE CASCADE,
     FOREIGN KEY(vehicleId) REFERENCES vehicles(id) ON DELETE SET NULL
   );
+
   CREATE TABLE IF NOT EXISTS notes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     clientId INTEGER NOT NULL,
@@ -72,6 +73,7 @@ db.exec(`
     createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(clientId) REFERENCES clients(id) ON DELETE CASCADE
   );
+
   CREATE TABLE IF NOT EXISTS claims (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     clientId INTEGER NOT NULL,
@@ -84,6 +86,7 @@ db.exec(`
     createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(clientId) REFERENCES clients(id) ON DELETE CASCADE
   );
+
   CREATE TABLE IF NOT EXISTS documents (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     clientId INTEGER NOT NULL,
@@ -92,7 +95,32 @@ db.exec(`
     createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(clientId) REFERENCES clients(id) ON DELETE CASCADE
   );
+
+  CREATE TABLE IF NOT EXISTS client_relations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    clientId INTEGER NOT NULL,
+    relatedClientId INTEGER NOT NULL,
+    relationType TEXT NOT NULL,
+    createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (clientId) REFERENCES clients(id) ON DELETE CASCADE,
+    FOREIGN KEY (relatedClientId) REFERENCES clients(id) ON DELETE CASCADE,
+    UNIQUE(clientId, relatedClientId)
+  );
 `);
+
+// 2. Safe Dynamic Column Migration Wrapper
+try {
+  db.exec(`ALTER TABLE policies ADD COLUMN hasYoungDriver INTEGER DEFAULT 0;`);
+  console.log("Successfully appended migration column 'hasYoungDriver' to policies.");
+} catch (error) {
+  // If the column already exists, SQLite throws an error which we catch safely here
+  // to avoid crashing the Electron boot cycle.
+  if ((error as Error).message.includes("duplicate column name")) {
+    console.log("Migration column 'hasYoungDriver' already present in table. Skipping safely.");
+  } else {
+    console.error("Failed to run policies migration:", error);
+  }
+}
 
 const backupService = new BackupService(app.getPath('userData'));
 
@@ -219,19 +247,33 @@ ipcMain.handle('get-client-policies', async (event, clientId) => {
   }
 });
 
-ipcMain.handle('add-policy', async (event, { clientId, vehicleId, policyNumber, company, policyType, startDate, endDate, premium, coverageDetails }) => {
+// In your electron/main.ts handler:
+ipcMain.handle('add-policy', async (event, payload) => {
+  const { 
+    clientId, policyNumber, company, policyType, 
+    startDate, endDate, premium, vehicleId, coverageDetails, hasYoungDriver 
+  } = payload;
+
   try {
-    const stmt = db.prepare(`
-      INSERT INTO policies (clientId, vehicleId, policyNumber, company, policyType, startDate, endDate, premium, coverageDetails) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    const insertPolicy = db.prepare(`
+      INSERT INTO policies (
+        clientId, policyNumber, company, policyType, 
+        startDate, endDate, premium, vehicleId, coverageDetails, hasYoungDriver
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    // Pass coverageDetails as the last argument matching the SQL placeholder
-    stmt.run(clientId, vehicleId, policyNumber, company, policyType, startDate, endDate, premium, coverageDetails);
+
+    insertPolicy.run(
+      clientId, policyNumber, company, policyType, 
+      startDate, endDate, premium, vehicleId, coverageDetails, hasYoungDriver // ◄--- Ensure this parameter is passed here!
+    );
+
     return { success: true };
-  } catch (err: any) {
-    console.error('Failed to add policy:', err);
-    return { success: false, error: err.message };
-  }
+  } catch (error) {
+  // Narrow the 'unknown' type safely
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  
+  return { success: false, error: errorMessage };
+}
 });
 
 ipcMain.handle('update-policy-status', async (event, policyId, newStatus) => {
@@ -532,6 +574,80 @@ ipcMain.handle('authenticate-gdrive-code', async (event, code) => {
 
 ipcMain.handle('run-gdrive-backup', async () => {
   return await backupService.runBackupPipeline();
+});
+
+ipcMain.handle('getClientRelations', async (event, clientId: number) => {
+  try {
+    const rows = db.prepare(`
+      SELECT 
+        cr.id,
+        cr.relatedClientId,
+        cr.relationType,
+        c.name AS relatedClientName,  -- <-- Fixed: Changed c.fullName to c.name
+        c.phone AS relatedClientPhone
+      FROM client_relations cr
+      JOIN clients c ON cr.relatedClientId = c.id
+      WHERE cr.clientId = ?
+    `).all(clientId);
+    return { success: true, relations: rows };
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
+});
+
+// 2. Add a new relationship (and its symmetrical inverse)
+ipcMain.handle('addClientRelation', async (event, { clientId, relatedClientId, relationType }: { clientId: number, relatedClientId: number, relationType: string }) => {
+  try {
+    if (clientId === relatedClientId) {
+      throw new Error("לקוח אינו יכול להיות מקושר לעצמו");
+    }
+
+    // Changed INSERT to INSERT OR REPLACE
+    const insert = db.prepare(`
+      INSERT OR REPLACE INTO client_relations (clientId, relatedClientId, relationType)
+      VALUES (?, ?, ?)
+    `);
+
+    const runTx = db.transaction(() => {
+      insert.run(clientId, relatedClientId, relationType);
+      
+      let inverseType = relationType;
+      if (relationType === 'child') inverseType = 'parent';
+      if (relationType === 'parent') inverseType = 'child';
+
+      insert.run(relatedClientId, clientId, inverseType);
+    });
+
+    runTx();
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
+});
+
+// 3. Delete a relationship (deletes both directions)
+ipcMain.handle('deleteClientRelation', async (event, { clientId, relatedClientId }: { clientId: number, relatedClientId: number }) => {
+  try {
+    const deleteStmt = db.prepare(`
+      DELETE FROM client_relations 
+      WHERE (clientId = ? AND relatedClientId = ?) 
+         OR (clientId = ? AND relatedClientId = ?)
+    `);
+    deleteStmt.run(clientId, relatedClientId, relatedClientId, clientId);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
+});
+
+// 4. Helper to fetch all other clients in system for search dropdown
+ipcMain.handle('getAllClientsMinimal', async () => {
+  try {
+    const rows = db.prepare(`SELECT id, name, phone FROM clients`).all();
+    return { success: true, clients: rows };
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
 });
 
 // --- Lifecycle Handlers ---

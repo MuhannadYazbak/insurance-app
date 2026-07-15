@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { NotesView } from './NotesView';
 import { ClaimsView } from './ClaimsView';
 import { DocumentsView } from './DocumentsView';
+import { ClientRelations } from './ClientRelationsView';
 
 interface Client {
   id: number;
@@ -34,6 +35,7 @@ interface Policy {
   premium: number;
   coverageDetails?: string;
   status: 'active' | 'frozen' | 'cancelled';
+  hasYoungDriver: boolean | number;
 }
 
 interface ClientMainViewProps {
@@ -61,13 +63,14 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
   const [vehicleForm, setVehicleForm] = useState({ licensePlate: '', make: '', model: '', year: '' });
   const [policyForm, setPolicyForm] = useState({
     policyNumber: '',
-    company: 'הפניקס',
-    policyType: 'חובה',
+    company: '',
+    policyType: '',
     startDate: '',
     endDate: '',
     premium: '',
     vehicleId: '',
     coverageDetails: '',
+    hasYoungDriver: false,
   });
   const [editingPolicy, setEditingPolicy] = useState<Policy | null>(null);
   const [isEditingPhone, setIsEditingPhone] = useState(false);
@@ -82,6 +85,37 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
     address: ''
   });
   const [formErrors, setFormErrors] = useState<{ [key: string]: string }>({});
+
+  // Reset all sub-forms, edit states, and validation errors 
+  // whenever a client or a tab is changed to prevent data leakage
+  useEffect(() => {
+    setPolicyForm({
+      policyNumber: '',
+      company: '',       // Keeping your placeholder approach!
+      policyType: '',    // Keeping your placeholder approach!
+      startDate: '',
+      endDate: '',
+      premium: '',
+      vehicleId: '',
+      coverageDetails: '',
+      hasYoungDriver: false,
+    });
+
+    setVehicleForm({
+      licensePlate: '',
+      make: '',
+      model: '',
+      year: ''
+    });
+
+    // Clear editing states so modal/inline inputs close
+    setEditingPolicy(null);
+    setEditingVehicleId(null);
+    setPlateInput('');
+
+    // Reset validation messages
+    setFormErrors({});
+  }, [selectedClient, activeTab]);
 
   // Sync form state when selectedClient changes or edit mode opens
   useEffect(() => {
@@ -253,6 +287,16 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
     return /^0\d{8,9}$/.test(cleanPhone);
   };
 
+  // Add this helper helper function outside your component or at the top of the file:
+  const isVehiclePolicyType = (type: string): boolean => {
+    if (!type) return false;
+    const cleanType = type.trim();
+    return [
+      'חובה', 'מקיף', 'צד ג',
+      'ביטוח חובה', 'ביטוח מקיף', 'צד שלישי', "צד שלישי (ג')", "צד ג'"
+    ].includes(cleanType);
+  };
+
   // Validates standard email format
   const validateEmail = (email: string): boolean => {
     if (!email || email.trim() === '') return true; // Optional field
@@ -295,16 +339,22 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
 
     const errors: { [key: string]: string } = {};
 
-    // 1. Validate Policy Number
-    if (!policyForm.policyNumber || policyForm.policyNumber.trim() === '') {
-      errors.policyNumber = 'אנא הזן מספר פוליסה';
+    // Validate Company Selection
+    if (!policyForm.company || policyForm.company === '') {
+      errors.policyCompany = 'אנא בחר חברת ביטוח';
     }
-    // 1. Validate Policy Number
+
+    // Validate Policy Type Selection
+    if (!policyForm.policyType || policyForm.policyType === '') {
+      errors.policyType = 'אנא בחר סוג כיסוי פוליסה';
+    }
+
+    // Validate Policy Number
     if (!policyForm.policyNumber || policyForm.policyNumber.trim() === '') {
       errors.policyNumber = 'אנא הזן מספר פוליסה';
     }
 
-    // 1.5 Validate Premium (Must be a positive number if provided)
+    //  Validate Premium (Must be a positive number if provided)
     if (policyForm.premium !== '') {
       const premiumVal = parseFloat(policyForm.premium);
       if (isNaN(premiumVal) || premiumVal < 0) {
@@ -312,11 +362,11 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
       }
     }
 
-    // 2. Setup Current Date (Today at 00:00:00)
+    //  Setup Current Date (Today at 00:00:00)
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // 3. Parse and Validate Start Date
+    //  Parse and Validate Start Date
     let start: Date | null = null;
     if (policyForm.startDate) {
       start = new Date(policyForm.startDate);
@@ -333,7 +383,7 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
       errors.policyStartDate = 'תאריך התחלה הוא שדה חובה';
     }
 
-    // 4. Parse and Validate End Date
+    // Parse and Validate End Date
     let end: Date | null = null;
     if (policyForm.endDate) {
       end = new Date(policyForm.endDate);
@@ -350,7 +400,7 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
       errors.policyEndDate = 'תאריך סיום הוא שדה חובה';
     }
 
-    // DEBUG LOGGING: Open your DevTools (Ctrl+Shift+I) to inspect these values if it fails
+    // DEBUG LOGGING
     console.log("Validation Check:", {
       today: today.toDateString(),
       startDateParsed: start ? start.toDateString() : "null",
@@ -358,13 +408,13 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
       errorsDetected: errors
     });
 
-    // 5. Block Submission if Errors Exist
+    // Block Submission if Errors Exist
     if (Object.keys(errors).length > 0) {
       setFormErrors(prev => ({ ...prev, ...errors }));
-      return; // <--- This strictly halts execution and prevents DB insert
+      return;
     }
 
-    // 6. Clear only Policy Errors if Valid
+    // Clear only Policy Errors if Valid
     setFormErrors(prev => {
       const copy = { ...prev };
       delete copy.policyNumber;
@@ -374,7 +424,10 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
       return copy;
     });
 
-    // 7. Proceed with DB insertion
+    // Safe checks using our clean helper function
+    const isVehicle = isVehiclePolicyType(policyForm.policyType);
+
+    // Proceed with DB insertion
     const payload = {
       clientId: selectedClient.id,
       policyNumber: policyForm.policyNumber,
@@ -383,24 +436,30 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
       startDate: policyForm.startDate,
       endDate: policyForm.endDate,
       premium: parseFloat(policyForm.premium) || 0,
-      vehicleId: ['חובה', 'מקיף', 'צד ג'].includes(policyForm.policyType) && policyForm.vehicleId
+      vehicleId: isVehicle && policyForm.vehicleId
         ? parseInt(policyForm.vehicleId)
         : null,
       coverageDetails: policyForm.coverageDetails,
+      // Safely transform boolean to an integer 1/0
+      hasYoungDriver: isVehicle && policyForm.hasYoungDriver ? 1 : 0
     };
+
+    // DEBUG TO CONFIRM VALUE BEFORE SENDING
+    console.log("PAYLOAD BEING SENT TO DATABASE:", payload);
 
     const res = await (window as any).electronAPI.addPolicy(payload);
 
     if (res.success) {
       setPolicyForm({
         policyNumber: '',
-        company: 'הפניקס',
-        policyType: 'חובה',
+        company: '',
+        policyType: '',
         startDate: '',
         endDate: '',
         premium: '',
         vehicleId: '',
         coverageDetails: '',
+        hasYoungDriver: false,
       });
       fetchRelationalData(selectedClient.id);
     } else {
@@ -424,10 +483,17 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
     e.preventDefault();
     if (!editingPolicy) return;
 
+    const isVehiclePolicy = [
+      'חובה', 'מקיף', 'צד ג',
+      'ביטוח חובה', 'ביטוח מקיף', 'צד שלישי', "צד שלישי (ג')"
+    ].includes(editingPolicy.policyType);
+
     const updates = {
       vehicleId: editingPolicy.vehicleId ? Number(editingPolicy.vehicleId) : null,
       premium: Number(editingPolicy.premium),
       coverageDetails: editingPolicy.coverageDetails || "",
+      // Include hasYoungDriver when editing so it doesn't get lost
+      hasYoungDriver: isVehiclePolicy && editingPolicy.hasYoungDriver ? 1 : 0,
     };
 
     const res = await (window as any).electronAPI.updatePolicyDetails(editingPolicy.id, updates);
@@ -741,9 +807,22 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
                             <span className="text-base font-medium">{selectedClient.address || 'לא הוזנה כתובת'}</span>
                           )}
                         </div>
+                        <ClientRelations
+                          clientId={selectedClient.id}
+                          onNavigateToClient={(targetClientId) => {
+                            // Find the full client object in the parent's clients list
+                            const targetClient = clients.find(c => c.id === targetClientId);
+                            if (targetClient) {
+                              setSelectedClient(targetClient);
+                            } else {
+                              alert("הלקוח המבוקש לא נמצא ברשימה");
+                            }
+                          }}
+                        />
                       </div>
 
                     </div>
+
                   </div>
                 )}
                 {activeTab === 'documents' && (
@@ -1026,6 +1105,7 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
                           value={policyForm.company}
                           onChange={(e) => setPolicyForm({ ...policyForm, company: e.target.value })}
                         >
+                          <option value="" disabled hidden>בחר חברה</option>
                           <option value="הפניקס">הפניקס</option>
                           <option value="מגדל">מגדל</option>
                           <option value="הראל">הראל</option>
@@ -1043,6 +1123,7 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
                           value={policyForm.policyType}
                           onChange={(e) => setPolicyForm({ ...policyForm, policyType: e.target.value, vehicleId: '' })}
                         >
+                          <option value="" disabled hidden>בחר סוג ביטוח</option>
                           <optgroup label="רכב">
                             <option value="חובה">ביטוח חובה</option>
                             <option value="מקיף">ביטוח מקיף</option>
@@ -1058,20 +1139,36 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
                       </div>
 
                       {/* שיוך לרכב / פירוט כיסוי */}
-                      {['חובה', 'מקיף', 'צד ג'].includes(policyForm.policyType) ? (
-                        <div>
-                          <label className="block text-[10px] text-gray-400 mb-1">שיוך לרכב (אופציונלי)</label>
-                          <select
-                            className="w-full text-xs p-2 border rounded bg-white text-right border-gray-200"
-                            value={policyForm.vehicleId}
-                            onChange={(e) => setPolicyForm({ ...policyForm, vehicleId: e.target.value })}
-                          >
-                            <option value="">ללא שיוך רכב</option>
-                            {vehicles.map(v => (
-                              <option key={v.id} value={v.id}>{v.make} {v.model} ({v.licensePlate})</option>
-                            ))}
-                          </select>
-                        </div>
+                      {isVehiclePolicyType(policyForm.policyType) ? (
+                        <>
+                          <div>
+                            <label className="block text-[10px] text-gray-400 mb-1">שיוך לרכב (אופציונלי)</label>
+                            <select
+                              className="w-full text-xs p-2 border rounded bg-white text-right border-gray-200"
+                              value={policyForm.vehicleId}
+                              onChange={(e) => setPolicyForm({ ...policyForm, vehicleId: e.target.value })}
+                            >
+                              <option value="">ללא שיוך רכב</option>
+                              {vehicles.map(v => (
+                                <option key={v.id} value={v.id}>{v.make} {v.model} ({v.licensePlate})</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {/* Dynamic Young Driver Checkbox - ONLY renders when isVehiclePolicyType is true */}
+                          <div className="col-span-1 flex items-center gap-2 bg-amber-50 border border-amber-200 p-2 rounded-lg mt-2 text-right animate-fadeIn" dir="rtl">
+                            <input
+                              type="checkbox"
+                              id="hasYoungDriver"
+                              className="w-4 h-4 text-amber-600 border-amber-300 rounded focus:ring-amber-500 cursor-pointer"
+                              checked={policyForm.hasYoungDriver}
+                              onChange={(e) => setPolicyForm({ ...policyForm, hasYoungDriver: e.target.checked })}
+                            />
+                            <label htmlFor="hasYoungDriver" className="text-xs font-semibold text-amber-800 cursor-pointer select-none">
+                              קיים נהג חדש / צעיר בפוליסה זו ⚠️
+                            </label>
+                          </div>
+                        </>
                       ) : (
                         <div>
                           <label className="block text-[10px] text-gray-400 mb-1">פירוט כיסוי / הערות</label>
@@ -1090,7 +1187,7 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
                       </button>
                     </form>
 
-                    <div className="border rounded-xl overflow-hidden shadow-sm bg-white">
+                    <div className="border rounded-xl overflow-hidden shadow-sm bg-white max-h-[340px] overflow-y-auto relative scrollbar-thin">
                       <table className="w-full text-right border-collapse">
                         <thead>
                           <tr className="bg-slate-100 border-b text-[11px] font-bold text-slate-600">
@@ -1129,6 +1226,7 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
 
                               return (
                                 <tr key={p.id} className={`hover:bg-slate-50/50 transition-colors ${p.status === 'cancelled' ? 'opacity-60' : ''}`}>
+                                  {/* Actions Column */}
                                   <td className="p-3 text-center flex items-center justify-center gap-1.5">
                                     {p.status !== 'cancelled' && (
                                       <button
@@ -1163,16 +1261,33 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
                                     )}
                                   </td>
 
-                                  <td className="p-3">
+                                  {/* Status Column */}
+                                  <td className="p-3 space-y-2">
                                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${statusBadgeBg}`}>
                                       {statusLabel}
                                     </span>
+                                    {/* Safe evaluation for both SQLite 1 and boolean true */}
+                                    {(p.hasYoungDriver === 1 || p.hasYoungDriver === true) && (
+                                      <span
+                                        className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 text-[9px] px-2 py-0.5 rounded-md font-bold border border-amber-200 select-none animate-pulse whitespace-nowrap shrink-0"
+                                        title="פוליסה זו כוללת כיסוי נהג צעיר / חדש"
+                                      >
+                                        <span>⚠️</span>
+                                        <span>נהג צעיר</span>
+                                      </span>
+                                    )}
                                   </td>
 
+                                  {/* End Date Column */}
                                   <td className="p-3 font-mono text-gray-600 font-semibold">{p.endDate}</td>
+
+                                  {/* Start Date Column */}
                                   <td className="p-3 font-mono text-gray-500">{p.startDate}</td>
+
+                                  {/* Premium Column */}
                                   <td className="p-3 font-medium">₪{p.premium.toLocaleString()}</td>
 
+                                  {/* Linked Vehicle or Coverage Details Column */}
                                   <td className="p-3 text-gray-600 font-medium">
                                     {['חובה', 'מקיף', 'צד ג', 'ביטוח חובה', 'ביטוח מקיף', 'צד שלישי (ג\')'].includes(p.policyType) ? (
                                       <span className="font-mono text-blue-600 font-semibold">{getLicensePlateById(p.vehicleId)}</span>
@@ -1180,9 +1295,22 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
                                       <span className="text-gray-500 italic text-xs">{p.coverageDetails || '-'}</span>
                                     )}
                                   </td>
+
+                                  {/* Policy Type Column */}
                                   <td className="p-3">{p.policyType}</td>
+
+                                  {/* Company Column */}
                                   <td className="p-3 font-semibold text-slate-700">{p.company}</td>
-                                  <td className="p-3 font-mono text-blue-600 font-medium">{p.policyNumber}</td>
+
+                                  {/* Policy Number Column with the dynamic Young Driver Badge */}
+                                  <td className="p-3 font-mono text-blue-600 font-medium">
+                                    <div className="flex items-center justify-start gap-2 flex-nowrap">
+                                      {/* Added shrink-0 to the policy number to ensure it doesn't compress either */}
+                                      <span className="shrink-0">{p.policyNumber}</span>
+
+
+                                    </div>
+                                  </td>
                                 </tr>
                               );
                             })

@@ -9,6 +9,8 @@ interface Client {
   name: string;
   nationalId: string;
   phone: string;
+  email: string;
+  address: string;
 }
 
 export default function App() {
@@ -38,8 +40,9 @@ const [activeView, setActiveView] = useState<'client-manager' | 'dashboard' | 's
     <div className="min-h-screen bg-slate-100 font-sans text-slate-600">
       {/* Top Application Bar */}
       {activeView === 'client-manager' && (
-        <div className="bg-slate-800 text-white p-3 flex justify-between items-center px-6 shadow-md flex-row-reverse">
-          <span className="font-bold tracking-wide text-sm">ניהול סוכנות ביטוח</span>
+        // <div className="bg-slate-800 text-white p-3 flex justify-between items-center px-6 shadow-md flex-row-reverse h-[50px]">
+          <div className="sticky top-0 z-50 bg-slate-800 text-white p-3 flex flex-row-reverse justify-between items-center px-6 shadow-md">
+          <span className="font-bold tracking-wide text-sm">וליד שתיוי - ניהול סוכנות ביטוח</span>
           <div className="flex gap-2">
             <button 
               onClick={() => setActiveView('search')}
@@ -60,6 +63,7 @@ const [activeView, setActiveView] = useState<'client-manager' | 'dashboard' | 's
               📋 משימות ותזכורות
             </button>
           </div>
+        
         </div>
       )}
 

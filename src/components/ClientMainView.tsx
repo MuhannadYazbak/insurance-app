@@ -525,7 +525,7 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
   );
 
   return (
-    <div className="min-h-screen bg-gray-100 text-gray-800 p-6 flex flex-col items-center">
+    <div className="bg-gray-100 text-gray-800 p-6 flex flex-col items-center">
       <header className="w-full max-w-6xl mb-6 text-right">
         <h1 className="text-3xl font-bold text-slate-800">מערכת ניהול סוכנות ביטוח</h1>
       </header>

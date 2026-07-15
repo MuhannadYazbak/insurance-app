@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { DashboardView } from './components/DashboardView';
 import { GlobalSearchView } from './components/GlobalSearchView';
 import { ClientMainView } from './components/ClientMainView';

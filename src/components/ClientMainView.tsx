@@ -526,9 +526,9 @@ export const ClientMainView: React.FC<ClientMainViewProps> = ({
 
   return (
     <div className="bg-gray-100 text-gray-800 p-6 flex flex-col items-center">
-      <header className="w-full max-w-6xl mb-6 text-right">
+      {/* <header className="w-full max-w-6xl mb-6 text-right">
         <h1 className="text-3xl font-bold text-slate-800">מערכת ניהול סוכנות ביטוח</h1>
-      </header>
+      </header> */}
 
       <main className="w-full max-w-6xl grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
         {/* ================= עמודה שמאלית: מדריך לקוחות ================= */}
